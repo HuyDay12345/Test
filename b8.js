@@ -444,14 +444,14 @@ const headerFunc = (parsedTarget, browser, version, platform, isMobile, fullVers
     }
 
     const acceptLanguagesMap = {
-        "US": "en-US,en;q=0.9",
-        "VN": "vi-VN,vi;q=0.9,en-US;q=0.8",
-        "JP": "ja-JP,ja;q=0.9,en-US;q=0.8",
-        "DE": "de-DE,de;q=0.9,en-US;q=0.8",
-        "FR": "fr-FR,fr;q=0.9,en-US;q=0.8",
+        "US": ["en-US,en;q=0.9", "en-US,en;q=0.8,es;q=0.7", "en-US,en-GB;q=0.9", "en-US,en;q=0.8,fr;q=0.7"],
+        "VN": ["vi-VN,vi;q=0.9,en-US;q=0.8", "vi-VN,vi;q=0.9,en;q=0.7", "vi,en-US;q=0.9", "vi-VN,vi;q=0.8"],
+        "JP": ["ja-JP,ja;q=0.9,en-US;q=0.8", "ja-JP,ja;q=0.8,en;q=0.7", "ja,en-US;q=0.9"],
+        "DE": ["de-DE,de;q=0.9,en-US;q=0.8", "de-DE,de;q=0.8,en;q=0.7", "de,en-US;q=0.9"],
+        "FR": ["fr-FR,fr;q=0.9,en-US;q=0.8", "fr-FR,fr;q=0.8,en;q=0.7", "fr,en-US;q=0.9"],
     };
-    const defaultAcceptLanguage = "en-US,en;q=0.9";
-    const acceptLanguage = acceptLanguagesMap[geoCountryCode] || defaultAcceptLanguage;
+    const defaultAcceptLanguage = ["en-US,en;q=0.9", "en-US,en;q=0.8", "en,en-GB;q=0.9"];
+    const acceptLanguage = randomElement(acceptLanguagesMap[geoCountryCode] || defaultAcceptLanguage);
 
     const secFetchSite = randomElement(profile.secFetchSites);
     let referer = undefined;
@@ -465,24 +465,36 @@ const headerFunc = (parsedTarget, browser, version, platform, isMobile, fullVers
         origin = randomElement(origins);
     }
 
-    const baseHeaders = {
-        ":method": "GET",
-        ":authority": Math.random() < 0.5 ? parsedTarget.host : `www.${parsedTarget.host}`,
-        ":scheme": "https",
-        ":path": parsedTarget.path || "/",
-        "user-agent": uapick(browser, version, platform, isMobile, fullVersion),
-        "accept": Math.random() < 0.7 ?
-            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8" :
-            "application/json, text/plain, */*;q=0.8",
-        "accept-encoding": randomElement(profile.acceptEncodings),
-        "accept-language": acceptLanguage,
-        "cache-control": randomElement(profile.cacheControls),
-        "sec-fetch-dest": randomElement(profile.secFetchDests),
-        "sec-fetch-mode": randomElement(profile.secFetchModes),
-        "sec-fetch-site": secFetchSite,
-        "dnt": Math.random() < 0.5 ? "1" : undefined,
-    };
+    const chromiumBased = ["chrome", "edge", "brave", "opera", "operagx", "duckduckgo", "mobile-chrome"];
+    const secChUa = chromiumBased.includes(browser) ?
+        `"${browser === "chrome" || browser === "mobile-chrome" ? "Google Chrome" : browser === "edge" ? "Microsoft Edge" : browser === "brave" ? "Brave" : "Opera"}";v="${version}", "Chromium";v="${version}", "Not-A.Brand";v="99"` :
+        undefined;
 
+    const headersArray = [
+        [":method", "GET"],
+        [":authority", Math.random() < 0.5 ? parsedTarget.host : `www.${parsedTarget.host}`],
+        [":scheme", "https"],
+        [":path", parsedTarget.path || "/"],
+        ["user-agent", uapick(browser, version, platform, isMobile, fullVersion)],
+        ...(secChUa ? [["sec-ch-ua", secChUa]] : []),
+        ["sec-ch-ua-mobile", isMobile ? "?1" : "?0"],
+        ["sec-ch-ua-platform", `"${platform}"`],
+        ...(secChUa ? [["sec-ch-ua-full-version-list", `"${browser.replace("mobile-", "")}";v="${fullVersion}", "Not-A.Brand";v="99.0.0.0"`]] : []),
+        ["accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"],
+        ["sec-fetch-site", secFetchSite],
+        ["sec-fetch-mode", randomElement(profile.secFetchModes)],
+        ["sec-fetch-user", Math.random() < 0.6 ? "?1" : undefined],
+        ["sec-fetch-dest", randomElement(profile.secFetchDests)],
+        ["referer", referer || "https://www.google.com/"],
+        ["accept-encoding", randomElement(profile.acceptEncodings)],
+        ["accept-language", acceptLanguage],
+        ["upgrade-insecure-requests", Math.random() < 0.8 ? "1" : undefined],
+        ["cache-control", randomElement(profile.cacheControls)],
+        ["priority", randomElement(["u=0, i", "u=1", "u=2", "u=3", "u=4"])],
+        ...(Math.random() < 0.3 ? [["x-request-id", `${randstr(8)}-${randstr(4)}-${randstr(4)}-${randstr(12)}`]] : []),
+    ];
+
+    const baseHeaders = headersArrayToObject(headersArray);
     const specificHeaders = profile.getSpecificHeaders(browser, version, platform, isMobile, fullVersion);
     Object.assign(baseHeaders, specificHeaders);
 
